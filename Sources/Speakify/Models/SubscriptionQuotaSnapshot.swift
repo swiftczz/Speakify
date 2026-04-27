@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 @Model
-final class SubscriptionQuotaSnapshot {
+package final class SubscriptionQuotaSnapshot {
     var characterCount: Int
     var characterLimit: Int
     var updatedAt: Date

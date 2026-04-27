@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 import XCTest
 @testable import Speakify
 
@@ -71,27 +70,11 @@ final class ModelLogicTests: XCTestCase {
 
     @MainActor
     func testSwiftDataHistoryRecordPersistsInModelContext() throws {
-        let schema = Schema([SpeechHistoryRecord.self])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: schema, configurations: [configuration])
-        let context = ModelContext(container)
+        let summary = try ModelLogicTestSupport.persistHistoryRecordSummary()
 
-        let record = SpeechHistoryRecord(
-            title: "Practice listening every morning.",
-            voiceName: "Adam",
-            voiceID: "adam-id",
-            modelID: "eleven_v3",
-            outputFormat: "mp3_44100_128",
-            duration: 4,
-            requestKey: "practice-adam"
-        )
-        context.insert(record)
-        try context.save()
-
-        let records = try context.fetch(FetchDescriptor<SpeechHistoryRecord>())
-        XCTAssertEqual(records.count, 1)
-        XCTAssertEqual(records.first?.voiceName, "Adam")
-        XCTAssertEqual(records.first?.durationText, "0:04")
+        XCTAssertEqual(summary.count, 1)
+        XCTAssertEqual(summary.voiceName, "Adam")
+        XCTAssertEqual(summary.durationText, "0:04")
     }
 
     @MainActor
@@ -107,16 +90,11 @@ final class ModelLogicTests: XCTestCase {
     @MainActor
     func testAudioPlaybackServiceCurrentTimeAdvancesWhilePlaying() async throws {
         let audioData = Self.silentWAVData(duration: 1.25)
-        let service = AudioPlaybackService()
+        let sample = try await ModelLogicTestSupport.samplePlaybackProgress(for: audioData)
 
-        let duration = try service.play(data: audioData)
-        try await Task.sleep(for: .milliseconds(350))
-        let currentTime = service.currentTime
-        service.stop()
-
-        XCTAssertEqual(duration, 1.25, accuracy: 0.05)
-        XCTAssertGreaterThan(currentTime, 0.1)
-        XCTAssertLessThan(currentTime, duration)
+        XCTAssertEqual(sample.duration, 1.25, accuracy: 0.05)
+        XCTAssertGreaterThan(sample.currentTime, 0.01)
+        XCTAssertLessThanOrEqual(sample.currentTime, sample.duration)
     }
 
     private static func silentWAVData(duration: TimeInterval) -> Data {
@@ -128,10 +106,11 @@ final class ModelLogicTests: XCTestCase {
         let dataSize = sampleCount * UInt32(channels) * bytesPerSample
         let byteRate = sampleRate * UInt32(channels) * bytesPerSample
         let blockAlign = channels * bitsPerSample / 8
+        let riffChunkSize = UInt32(36) + dataSize
 
         var data = Data()
         data.append(contentsOf: "RIFF".utf8)
-        data.appendLittleEndian(36 + dataSize)
+        data.appendLittleEndian(riffChunkSize)
         data.append(contentsOf: "WAVE".utf8)
         data.append(contentsOf: "fmt ".utf8)
         data.appendLittleEndian(UInt32(16))

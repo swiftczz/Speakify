@@ -8,14 +8,19 @@ let package = Package(
         .macOS(.v26)
     ],
     products: [
-        .executable(name: "Speakify", targets: ["Speakify"])
+        .executable(name: "Speakify", targets: ["SpeakifyApp"])
     ],
     targets: [
-        .executableTarget(
+        .target(
             name: "Speakify",
             resources: [
                 .process("Resources")
             ]
+        ),
+        .executableTarget(
+            name: "SpeakifyApp",
+            dependencies: ["Speakify"],
+            path: "Sources/SpeakifyApp"
         ),
         .testTarget(
             name: "SpeakifyTests",

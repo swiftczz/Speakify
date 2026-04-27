@@ -1,28 +1,28 @@
 import Foundation
 
-enum AppDataLocation {
+package enum AppDataLocation {
     private static let rootDirectoryName = ".speakify"
     private static let legacyDirectoryName = "com.local.Speakify"
     private static let historyStoreFileName = "History.store"
 
-    static func prepare(fileManager: FileManager = .default) {
+    package static func prepare(fileManager: FileManager = .default) {
         let rootURL = rootDirectoryURL(fileManager: fileManager)
         migrateLegacyDataIfNeeded(to: rootURL, fileManager: fileManager)
     }
 
-    static func rootDirectoryURL(fileManager: FileManager = .default) -> URL {
+    package static func rootDirectoryURL(fileManager: FileManager = .default) -> URL {
         let rootURL = URL(filePath: NSHomeDirectory(), directoryHint: .isDirectory)
             .appending(path: rootDirectoryName, directoryHint: .isDirectory)
         ensureDirectoryExists(at: rootURL, fileManager: fileManager)
         return rootURL
     }
 
-    static func historyStoreURL(fileManager: FileManager = .default) -> URL {
+    package static func historyStoreURL(fileManager: FileManager = .default) -> URL {
         prepare(fileManager: fileManager)
         return rootDirectoryURL(fileManager: fileManager).appending(path: historyStoreFileName)
     }
 
-    static func audioCacheDirectoryURL(fileManager: FileManager = .default) -> URL {
+    package static func audioCacheDirectoryURL(fileManager: FileManager = .default) -> URL {
         prepare(fileManager: fileManager)
         let directoryURL = rootDirectoryURL(fileManager: fileManager)
             .appending(path: "AudioCache", directoryHint: .isDirectory)
@@ -30,7 +30,7 @@ enum AppDataLocation {
         return directoryURL
     }
 
-    static func defaultExportsDirectoryURL(fileManager: FileManager = .default) -> URL {
+    package static func defaultExportsDirectoryURL(fileManager: FileManager = .default) -> URL {
         prepare(fileManager: fileManager)
         let directoryURL = rootDirectoryURL(fileManager: fileManager)
             .appending(path: "Exports", directoryHint: .isDirectory)

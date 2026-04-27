@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-struct ContentView: View {
+package struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SubscriptionQuotaSnapshot.updatedAt, order: .reverse) private var subscriptionSnapshots: [SubscriptionQuotaSnapshot]
     @StateObject private var settings: AppSettings
@@ -12,7 +12,7 @@ struct ContentView: View {
     @State private var leftCollapsed = false
     @State private var rightCollapsed = false
 
-    init() {
+    package init() {
         let settings = AppSettings()
         _settings = StateObject(wrappedValue: settings)
         _viewModel = StateObject(wrappedValue: SpeechViewModel(settings: settings))
@@ -22,7 +22,7 @@ struct ContentView: View {
         viewModel.subscription ?? subscriptionSnapshots.first?.subscription
     }
 
-    var body: some View {
+    package var body: some View {
         HStack(spacing: 0) {
             if !leftCollapsed {
                 SidebarView(

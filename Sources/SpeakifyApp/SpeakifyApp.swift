@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import Speakify
 
 @main
 struct SpeakifyApp: App {

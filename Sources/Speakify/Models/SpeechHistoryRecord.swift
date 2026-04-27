@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 
 @Model
-final class SpeechHistoryRecord {
+package final class SpeechHistoryRecord {
     var title: String
     var voiceName: String
     var voiceID: String
