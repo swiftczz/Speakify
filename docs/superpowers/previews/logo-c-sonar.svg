@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bgC" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#18181B"/>
+      <stop offset="100%" stop-color="#3B0764"/>
+    </linearGradient>
+    <radialGradient id="dotC" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#22D3EE"/>
+      <stop offset="100%" stop-color="#0891B2"/>
+    </radialGradient>
+    <filter id="shadowC" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="12" stdDeviation="24" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <filter id="glowC" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="58" y="58" width="908" height="908" rx="214" ry="214" fill="url(#bgC)" filter="url(#shadowC)"/>
+  
+  <!-- Inner highlight stroke -->
+  <rect x="68" y="68" width="888" height="888" rx="206" ry="206" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="2"/>
+  
+  <!-- Concentric sonar arcs -->
+  <g fill="none" stroke="#22D3EE" stroke-width="12" stroke-linecap="round" filter="url(#glowC)">
+    <path d="M 512 292 A 220 220 0 0 1 512 732" stroke-opacity="0.9"/>
+    <path d="M 512 232 A 280 280 0 0 1 512 792" stroke-opacity="0.65"/>
+    <path d="M 512 172 A 340 340 0 0 1 512 852" stroke-opacity="0.4"/>
+    <path d="M 512 112 A 400 400 0 0 1 512 912" stroke-opacity="0.2"/>
+  </g>
+  
+  <!-- Center dot -->
+  <circle cx="512" cy="512" r="50" fill="url(#dotC)" filter="url(#glowC)"/>
+</svg>

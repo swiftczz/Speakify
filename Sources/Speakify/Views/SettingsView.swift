@@ -39,10 +39,21 @@ struct SettingsView: View {
                                 Text(format).tag(format)
                             }
                         }
+                        Picker("Language", selection: $settings.languageCode) {
+                            ForEach(SpeechLanguage.supportedCodes, id: \.self) { code in
+                                Text(SpeechLanguage.displayName(for: code)).tag(code)
+                            }
+                        }
                     }
 
                     Section("ElevenLabs") {
                         SecureField("API Key", text: $settings.apiKey)
+
+                        if let keychainErrorMessage = settings.keychainErrorMessage {
+                            Label(keychainErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.red)
+                        }
                     }
 
                     Section("Download") {

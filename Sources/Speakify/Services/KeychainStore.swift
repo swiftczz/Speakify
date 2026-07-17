@@ -24,7 +24,7 @@ enum KeychainStore {
         return key
     }
 
-    static func saveAPIKey(_ key: String) {
+    static func saveAPIKey(_ key: String) throws {
         let data = Data(key.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -36,11 +36,28 @@ enum KeychainStore {
             kSecValueData as String: data
         ]
 
-        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if status == errSecItemNotFound {
-            var addQuery = query
-            addQuery[kSecValueData as String] = data
-            SecItemAdd(addQuery as CFDictionary, nil)
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        guard updateStatus == errSecItemNotFound else {
+            guard updateStatus == errSecSuccess else {
+                throw KeychainError(status: updateStatus)
+            }
+            return
         }
+
+        var addQuery = query
+        addQuery[kSecValueData as String] = data
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            throw KeychainError(status: addStatus)
+        }
+    }
+}
+
+struct KeychainError: LocalizedError {
+    let status: OSStatus
+
+    var errorDescription: String? {
+        let reason = SecCopyErrorMessageString(status, nil) as String? ?? "Keychain error \(status)."
+        return "The API key could not be saved to the keychain: \(reason)"
     }
 }

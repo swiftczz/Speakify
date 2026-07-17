@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bgG" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="100%" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <linearGradient id="barG" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#BAE6FD"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <filter id="shadowG" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="12" stdDeviation="24" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <filter id="glowG" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <rect x="58" y="58" width="908" height="908" rx="214" ry="214" fill="url(#bgG)" filter="url(#shadowG)"/>
+  <rect x="68" y="68" width="888" height="888" rx="206" ry="206" fill="none" stroke="#FFFFFF" stroke-opacity="0.15" stroke-width="2"/>
+  
+  <!-- Horizontal spectrum bars in circular arrangement -->
+  <g fill="url(#barG)" filter="url(#glowG)">
+    <rect x="192" y="352" width="640" height="32" rx="16" ry="16" opacity="0.9"/>
+    <rect x="192" y="412" width="520" height="32" rx="16" ry="16" opacity="0.85"/>
+    <rect x="192" y="472" width="640" height="32" rx="16" ry="16" opacity="0.95"/>
+    <rect x="192" y="532" width="440" height="32" rx="16" ry="16" opacity="0.75"/>
+    <rect x="192" y="592" width="640" height="32" rx="16" ry="16" opacity="0.9"/>
+    <rect x="192" y="652" width="360" height="32" rx="16" ry="16" opacity="0.65"/>
+  </g>
+  
+  <!-- Play triangle overlay -->
+  <path d="M 472 432 L 472 592 L 592 512 Z" fill="#FFFFFF" fill-opacity="0.95" filter="url(#shadowG)"/>
+</svg>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bgB" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#FB7185"/>
+    </linearGradient>
+    <linearGradient id="bubbleB" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#FFF1F2"/>
+    </linearGradient>
+    <filter id="shadowB" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="12" stdDeviation="24" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <filter id="glowB" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="58" y="58" width="908" height="908" rx="214" ry="214" fill="url(#bgB)" filter="url(#shadowB)"/>
+  
+  <!-- Inner highlight stroke -->
+  <rect x="68" y="68" width="888" height="888" rx="206" ry="206" fill="none" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="2"/>
+  
+  <!-- Speech bubble -->
+  <path d="M 262 362 
+           C 262 302 302 262 362 262 
+           L 662 262 
+           C 722 262 762 302 762 362 
+           L 762 562 
+           C 762 622 722 662 662 662 
+           L 472 662 
+           L 382 752 
+           L 412 662 
+           L 362 662 
+           C 302 662 262 622 262 562 
+           Z" 
+        fill="url(#bubbleB)" filter="url(#shadowB)"/>
+  
+  <!-- Sound wave inside bubble -->
+  <g fill="#FB7185" filter="url(#glowB)">
+    <rect x="370" y="452" width="24" height="80" rx="12" ry="12"/>
+    <rect x="426" y="412" width="24" height="160" rx="12" ry="12"/>
+    <rect x="482" y="372" width="24" height="240" rx="12" ry="12"/>
+    <rect x="538" y="412" width="24" height="160" rx="12" ry="12"/>
+    <rect x="594" y="452" width="24" height="80" rx="12" ry="12"/>
+  </g>
+</svg>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bgH" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#374151"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="micH" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E5E7EB"/>
+      <stop offset="100%" stop-color="#9CA3AF"/>
+    </linearGradient>
+    <filter id="shadowH" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="12" stdDeviation="24" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="glowH" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="58" y="58" width="908" height="908" rx="214" ry="214" fill="url(#bgH)" filter="url(#shadowH)"/>
+  <rect x="68" y="68" width="888" height="888" rx="206" ry="206" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="2"/>
+  
+  <!-- Microphone body -->
+  <rect x="452" y="252" width="120" height="260" rx="60" ry="60" fill="url(#micH)" filter="url(#shadowH)"/>
+  
+  <!-- Microphone stand arc -->
+  <path d="M 392 432 C 392 548 452 608 512 608 C 572 608 632 548 632 432" 
+        fill="none" stroke="#E5E7EB" stroke-width="24" stroke-linecap="round" filter="url(#shadowH)"/>
+  
+  <!-- Microphone stand vertical line -->
+  <rect x="500" y="608" width="24" height="80" rx="12" ry="12" fill="#E5E7EB"/>
+  
+  <!-- Base -->
+  <rect x="432" y="688" width="160" height="24" rx="12" ry="12" fill="#E5E7EB"/>
+  
+  <!-- Sound waves -->
+  <g fill="none" stroke="#34D399" stroke-width="12" stroke-linecap="round" filter="url(#glowH)">
+    <path d="M 372 332 C 332 372 332 512 372 552" stroke-opacity="0.9"/>
+    <path d="M 332 292 C 272 352 272 532 332 592" stroke-opacity="0.6"/>
+    <path d="M 652 332 C 692 372 692 512 652 552" stroke-opacity="0.9"/>
+    <path d="M 692 292 C 752 352 752 532 692 592" stroke-opacity="0.6"/>
+  </g>
+</svg>

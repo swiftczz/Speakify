@@ -3,6 +3,48 @@ import XCTest
 @testable import Speakify
 
 final class ModelLogicTests: XCTestCase {
+    func testSubtitleFormatterBuildsAlignedSRTCues() throws {
+        let characters = Array("Hello world. Next line!").map(String.init)
+        let alignment = SpeechAlignment(
+            characters: characters,
+            characterStartTimesSeconds: characters.indices.map { Double($0) * 0.1 },
+            characterEndTimesSeconds: characters.indices.map { Double($0 + 1) * 0.1 }
+        )
+
+        let subtitle = try SubtitleFormatter.srt(from: alignment)
+
+        XCTAssertTrue(subtitle.contains("00:00:00,000 --> 00:00:01,200"))
+        XCTAssertTrue(subtitle.contains("Hello world."))
+        XCTAssertTrue(subtitle.contains("00:00:01,300 --> 00:00:02,300"))
+        XCTAssertTrue(subtitle.contains("Next line!"))
+    }
+
+    func testSubtitleFormatterRejectsMismatchedAlignment() {
+        let alignment = SpeechAlignment(
+            characters: ["H", "i"],
+            characterStartTimesSeconds: [0],
+            characterEndTimesSeconds: [0.1, 0.2]
+        )
+
+        XCTAssertThrowsError(try SubtitleFormatter.srt(from: alignment))
+    }
+
+    func testSubtitleFormatterKeepsLongSentenceInOneCue() throws {
+        let text = "The group chats turned aggressive in the other sense: classmates going after each other over the last few internships, everyone exceedingly certain the sky was falling, the anxiety plainly excessive at 3 a.m."
+        let characters = Array(text).map(String.init)
+        let alignment = SpeechAlignment(
+            characters: characters,
+            characterStartTimesSeconds: characters.indices.map { Double($0) * 0.15 },
+            characterEndTimesSeconds: characters.indices.map { Double($0 + 1) * 0.15 }
+        )
+
+        let subtitle = try SubtitleFormatter.srt(from: alignment)
+
+        XCTAssertEqual(subtitle.components(separatedBy: " --> ").count - 1, 1)
+        XCTAssertTrue(subtitle.contains("The group chats turned aggressive"))
+        XCTAssertTrue(subtitle.contains("excessive at 3 a.m."))
+    }
+
     func testSpeechFileNameSanitizesTextAndVoice() {
         let date = Date(timeIntervalSince1970: 1_712_345_678)
         let fileName = FileNameFormatter.speechFileName(
@@ -95,6 +137,27 @@ final class ModelLogicTests: XCTestCase {
         XCTAssertEqual(sample.duration, 1.25, accuracy: 0.05)
         XCTAssertGreaterThan(sample.currentTime, 0.01)
         XCTAssertLessThanOrEqual(sample.currentTime, sample.duration)
+    }
+
+    /// At 2x, three seconds of audio reaches the 2s mark after ~1s of wall time.
+    /// At 1x it would need 2s, so this can only pass when the rate is really applied
+    /// (`enableRate` must be set before `prepareToPlay()` or rate changes are ignored).
+    @MainActor
+    func testAudioPlaybackServiceAppliesFasterPlaybackRate() async throws {
+        let service = AudioPlaybackService()
+        _ = try service.play(data: Self.silentWAVData(duration: 3.0), rate: 2.0, fileExtension: "wav")
+        defer { service.stop() }
+
+        var reachedTwoSeconds = false
+        for _ in 0..<15 {
+            try await Task.sleep(for: .milliseconds(100))
+            if service.currentTime > 2.0 {
+                reachedTwoSeconds = true
+                break
+            }
+        }
+
+        XCTAssertTrue(reachedTwoSeconds, "Playback did not run at 2x; reached only \(service.currentTime)s.")
     }
 
     private static func silentWAVData(duration: TimeInterval) -> Data {

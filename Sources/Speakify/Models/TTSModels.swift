@@ -71,6 +71,26 @@ struct TTSVoice: Identifiable, Hashable, Codable, Sendable {
     }
 }
 
+enum TTSLimits {
+    static let maxCharacterCount = 5_000
+}
+
+enum SpeechLanguage {
+    /// An empty code means the field is omitted so the model detects the language from the text.
+    static let autoDetect = ""
+
+    static let supportedCodes = [
+        autoDetect,
+        "en", "zh", "ja", "ko", "es", "fr", "de", "it", "pt", "ru",
+        "hi", "ar", "nl", "pl", "tr", "sv", "id", "vi", "cs", "uk"
+    ]
+
+    static func displayName(for code: String) -> String {
+        guard code.isEmpty == false else { return "Auto detect" }
+        return (Locale.current.localizedString(forLanguageCode: code) ?? code).localizedCapitalized
+    }
+}
+
 struct VoiceSettings: Codable, Equatable, Sendable {
     var stability: Double = 0.5
     var similarityBoost: Double = 0.75
@@ -84,6 +104,7 @@ struct SpeechRequest: Equatable, Sendable {
     var voice: TTSVoice
     var modelID: String
     var outputFormat: String
+    var languageCode: String?
     var voiceSettings: VoiceSettings
 }
 
@@ -91,15 +112,37 @@ struct GeneratedSpeech: Sendable {
     let audioData: Data
     let fileExtension: String
     let request: SpeechRequest
+    let alignment: SpeechAlignment?
+}
+
+struct SpeechAlignment: Codable, Equatable, Sendable {
+    let characters: [String]
+    let characterStartTimesSeconds: [TimeInterval]
+    let characterEndTimesSeconds: [TimeInterval]
+
+    var isValid: Bool {
+        characters.isEmpty == false
+            && characters.count == characterStartTimesSeconds.count
+            && characters.count == characterEndTimesSeconds.count
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case characters
+        case characterStartTimesSeconds = "character_start_times_seconds"
+        case characterEndTimesSeconds = "character_end_times_seconds"
+    }
 }
 
 enum TTSProviderError: LocalizedError, Sendable {
     case missingAPIKey
     case missingVoice
     case invalidText
+    case textTooLong(count: Int, limit: Int)
     case invalidResponse
     case requestChanged
-    case httpStatus(Int, String)
+    /// `code` is the service's machine-readable identifier (e.g. `voice_not_found`),
+    /// kept separate so callers never have to pattern-match the human-readable message.
+    case httpStatus(status: Int, message: String, code: String?)
 
     var errorDescription: String? {
         switch self {
@@ -108,12 +151,14 @@ enum TTSProviderError: LocalizedError, Sendable {
         case .missingVoice:
             return "Please choose a reader voice."
         case .invalidText:
-            return "Please enter English text to read."
+            return "Please enter text to read."
+        case let .textTooLong(count, limit):
+            return "The text is \(count) characters, which is over the \(limit)-character limit. Please shorten it."
         case .invalidResponse:
             return "The speech service returned an invalid response."
         case .requestChanged:
             return "The speech request changed. Press play again to generate the latest text."
-        case let .httpStatus(status, message):
+        case let .httpStatus(status, message, _):
             return "Speech service error \(status): \(message)"
         }
     }

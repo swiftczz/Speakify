@@ -5,6 +5,20 @@ struct ElevenLabsProvider: TTSProvider {
     let displayName = "ElevenLabs"
 
     private let baseURL = URL(string: "https://api.elevenlabs.io")!
+    private let session: URLSession
+
+    init(session: URLSession = ElevenLabsProvider.makeSession()) {
+        self.session = session
+    }
+
+    static func makeSession() -> URLSession {
+        let configuration = URLSessionConfiguration.default
+        // Guards against a request that stalls forever; synthesis of long text is
+        // allowed to take a while as long as the connection keeps delivering data.
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 300
+        return URLSession(configuration: configuration)
+    }
 
     func fetchModels(apiKey: String) async throws -> [TTSModel] {
         guard apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
@@ -15,7 +29,7 @@ struct ElevenLabsProvider: TTSProvider {
         request.httpMethod = "GET"
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
 
         let decoded = try JSONDecoder().decode([ElevenLabsModel].self, from: data)
@@ -55,7 +69,7 @@ struct ElevenLabsProvider: TTSProvider {
         request.httpMethod = "GET"
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
 
         let decoded = try JSONDecoder().decode(ElevenLabsVoicesResponse.self, from: data)
@@ -89,7 +103,7 @@ struct ElevenLabsProvider: TTSProvider {
         request.httpMethod = "GET"
         request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
 
         return try JSONDecoder().decode(ElevenLabsSubscription.self, from: data)
@@ -101,7 +115,7 @@ struct ElevenLabsProvider: TTSProvider {
         }
 
         var components = URLComponents(
-            url: baseURL.appending(path: "/v1/text-to-speech/\(speechRequest.voice.id)"),
+            url: baseURL.appending(path: "/v1/text-to-speech/\(speechRequest.voice.id)/with-timestamps"),
             resolvingAgainstBaseURL: false
         )!
         components.queryItems = [
@@ -114,13 +128,23 @@ struct ElevenLabsProvider: TTSProvider {
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
         urlRequest.httpBody = try JSONEncoder().encode(ElevenLabsSpeechBody(from: speechRequest))
 
-        let (data, response) = try await URLSession.shared.data(for: urlRequest)
+        let (data, response) = try await session.data(for: urlRequest)
         try validate(response: response, data: data)
 
+        let decoded = try JSONDecoder().decode(ElevenLabsTimestampedSpeech.self, from: data)
+        guard let audioData = Data(base64Encoded: decoded.audioBase64), audioData.isEmpty == false else {
+            throw TTSProviderError.invalidResponse
+        }
+
+        let alignment = [decoded.alignment, decoded.normalizedAlignment]
+            .compactMap { $0 }
+            .first(where: \.isValid)
+
         return GeneratedSpeech(
-            audioData: data,
+            audioData: audioData,
             fileExtension: speechRequest.outputFormat.hasPrefix("wav") ? "wav" : "mp3",
-            request: speechRequest
+            request: speechRequest,
+            alignment: alignment
         )
     }
 
@@ -130,9 +154,25 @@ struct ElevenLabsProvider: TTSProvider {
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
-            let message = ElevenLabsErrorMessage.message(from: data)
-            throw TTSProviderError.httpStatus(httpResponse.statusCode, message)
+            let failure = ElevenLabsErrorMessage.parse(from: data)
+            throw TTSProviderError.httpStatus(
+                status: httpResponse.statusCode,
+                message: failure.message,
+                code: failure.code
+            )
         }
+    }
+}
+
+private struct ElevenLabsTimestampedSpeech: Decodable {
+    let audioBase64: String
+    let alignment: SpeechAlignment?
+    let normalizedAlignment: SpeechAlignment?
+
+    enum CodingKeys: String, CodingKey {
+        case audioBase64 = "audio_base64"
+        case alignment
+        case normalizedAlignment = "normalized_alignment"
     }
 }
 
@@ -194,13 +234,14 @@ private struct ElevenLabsVerifiedLanguage: Decodable {
 private struct ElevenLabsSpeechBody: Encodable {
     let text: String
     let modelID: String
-    let languageCode: String
+    /// Omitted when nil so the model detects the language from the text itself.
+    let languageCode: String?
     let voiceSettings: ElevenLabsVoiceSettings
 
     init(from request: SpeechRequest) {
         text = request.text
         modelID = request.modelID
-        languageCode = "en"
+        languageCode = request.languageCode
         voiceSettings = ElevenLabsVoiceSettings(from: request.voiceSettings)
     }
 
@@ -253,16 +294,16 @@ struct ElevenLabsSubscription: Decodable, Equatable, Sendable {
 }
 
 private enum ElevenLabsErrorMessage {
-    static func message(from data: Data) -> String {
+    static func parse(from data: Data) -> (message: String, code: String?) {
         guard data.isEmpty == false else {
-            return "No error body returned."
+            return ("No error body returned.", nil)
         }
 
         if let decoded = try? JSONDecoder().decode(DetailEnvelope.self, from: data) {
-            return decoded.readableMessage
+            return (decoded.readableMessage, decoded.detail?.status)
         }
 
-        return String(data: data, encoding: .utf8) ?? "Unreadable error body."
+        return (String(data: data, encoding: .utf8) ?? "Unreadable error body.", nil)
     }
 
     private struct DetailEnvelope: Decodable {

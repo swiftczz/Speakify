@@ -3,8 +3,12 @@ import Foundation
 
 final class AppSettings: ObservableObject {
     @Published var apiKey: String {
-        didSet { KeychainStore.saveAPIKey(apiKey) }
+        didSet { persistAPIKey() }
     }
+
+    /// Non-nil when the key could not reach the keychain, so the UI can say so
+    /// instead of letting the user believe it was stored.
+    @Published private(set) var keychainErrorMessage: String?
 
     @Published var downloadDirectoryPath: String {
         didSet { defaults.set(downloadDirectoryPath, forKey: Keys.downloadDirectoryPath) }
@@ -20,6 +24,10 @@ final class AppSettings: ObservableObject {
 
     @Published var providerID: String {
         didSet { defaults.set(providerID, forKey: Keys.providerID) }
+    }
+
+    @Published var languageCode: String {
+        didSet { defaults.set(languageCode, forKey: Keys.languageCode) }
     }
 
     @Published var playbackRate: Double {
@@ -44,6 +52,7 @@ final class AppSettings: ObservableObject {
         modelID = defaults.string(forKey: Keys.modelID) ?? "eleven_v3"
         outputFormat = defaults.string(forKey: Keys.outputFormat) ?? "mp3_44100_128"
         providerID = defaults.string(forKey: Keys.providerID) ?? "elevenlabs"
+        languageCode = defaults.string(forKey: Keys.languageCode) ?? SpeechLanguage.autoDetect
         playbackRate = Self.normalizedPlaybackRate(defaults.object(forKey: Keys.playbackRate) as? Double ?? 1.0)
     }
 
@@ -51,11 +60,21 @@ final class AppSettings: ObservableObject {
         URL(filePath: downloadDirectoryPath, directoryHint: .isDirectory)
     }
 
+    private func persistAPIKey() {
+        do {
+            try KeychainStore.saveAPIKey(apiKey)
+            keychainErrorMessage = nil
+        } catch {
+            keychainErrorMessage = error.localizedDescription
+        }
+    }
+
     private enum Keys {
         static let downloadDirectoryPath = "downloadDirectoryPath"
         static let modelID = "modelID"
         static let outputFormat = "outputFormat"
         static let providerID = "providerID"
+        static let languageCode = "languageCode"
         static let playbackRate = "playbackRate"
     }
 

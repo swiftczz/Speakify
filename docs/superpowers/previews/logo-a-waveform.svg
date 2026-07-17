@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bgA" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#312E81"/>
+      <stop offset="100%" stop-color="#0E7490"/>
+    </linearGradient>
+    <linearGradient id="circleA" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="barA" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E2E8F0"/>
+    </linearGradient>
+    <filter id="shadowA" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="12" stdDeviation="24" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <filter id="glowA" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Rounded square background -->
+  <rect x="58" y="58" width="908" height="908" rx="214" ry="214" fill="url(#bgA)" filter="url(#shadowA)"/>
+  
+  <!-- Inner highlight stroke -->
+  <rect x="68" y="68" width="888" height="888" rx="206" ry="206" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="2"/>
+  
+  <!-- Dark circular core -->
+  <circle cx="512" cy="512" r="330" fill="url(#circleA)" filter="url(#shadowA)"/>
+  
+  <!-- Top sheen on circle -->
+  <path d="M 256 430 A 330 330 0 0 1 768 430 A 330 330 0 0 0 256 430" fill="#FFFFFF" fill-opacity="0.06"/>
+  
+  <!-- Waveform bars -->
+  <g fill="url(#barA)" filter="url(#glowA)">
+    <rect x="364" y="412" width="60" height="200" rx="30" ry="30"/>
+    <rect x="454" y="332" width="60" height="360" rx="30" ry="30"/>
+    <rect x="544" y="282" width="60" height="460" rx="30" ry="30"/>
+    <rect x="634" y="332" width="60" height="360" rx="30" ry="30"/>
+    <rect x="724" y="412" width="60" height="200" rx="30" ry="30"/>
+  </g>
+</svg>

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bgB2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E9D5FF"/>
+      <stop offset="100%" stop-color="#FBCFE8"/>
+    </linearGradient>
+    <filter id="shadowB2" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="12" stdDeviation="24" flood-color="#000000" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <rect x="58" y="58" width="908" height="908" rx="214" ry="214" fill="url(#bgB2)" filter="url(#shadowB2)"/>
+  <rect x="68" y="68" width="888" height="888" rx="206" ry="206" fill="none" stroke="#FFFFFF" stroke-opacity="0.4" stroke-width="2"/>
+  
+  <!-- Rounded speech bubble -->
+  <path d="M 292 332 
+           C 292 292 292 292 332 292 
+           L 692 292 
+           C 732 292 732 292 732 332 
+           L 732 592 
+           C 732 632 732 632 692 632 
+           L 432 632 
+           L 332 732 
+           L 362 632 
+           L 332 632 
+           C 292 632 292 632 292 592 
+           Z" 
+        fill="#FFFFFF" filter="url(#shadowB2)"/>
+  
+  <!-- Simple sound wave inside -->
+  <path d="M 392 492 
+           Q 432 432 472 492 
+           T 552 492 
+           T 632 492" 
+        fill="none" stroke="#DB2777" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Sound dot -->
+  <circle cx="662" cy="462" r="18" fill="#DB2777"/>
+</svg>

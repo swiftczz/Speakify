@@ -220,9 +220,10 @@ private struct EditorCard: View {
                 .padding(22)
 
             HStack {
-                Text("\(viewModel.text.count) / 5000")
+                Text("\(viewModel.text.count) / \(TTSLimits.maxCharacterCount)")
                     .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(AppPalette.muted)
+                    .monospacedDigit()
+                    .foregroundStyle(viewModel.isTextOverLimit ? Color.red : AppPalette.muted)
 
                 Spacer()
             }
@@ -300,6 +301,13 @@ private struct PlayerBar: View {
     @State private var dismissDownloadCompletionTask: Task<Void, Never>?
     private let playbackTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
 
+    private var playButtonSymbol: String {
+        if viewModel.isGenerating {
+            return "stop.circle.fill"
+        }
+        return viewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill"
+    }
+
     var body: some View {
         HStack(spacing: 16) {
             AudioStatusView(
@@ -326,13 +334,15 @@ private struct PlayerBar: View {
                     }
                 }
 
-                if viewModel.isPlaying {
+                if viewModel.isGenerating {
+                    viewModel.cancelGeneration()
+                } else if viewModel.isPlaying {
                     viewModel.stop()
                 } else {
                     Task { await viewModel.play(modelContext: modelContext) }
                 }
             } label: {
-                Image(systemName: viewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                Image(systemName: playButtonSymbol)
                     .font(.system(size: 24, weight: .regular))
                     .symbolRenderingMode(.monochrome)
                     .foregroundStyle(isAnimatingPlayButton ? AppPalette.accent : AppPalette.ink)
@@ -342,7 +352,12 @@ private struct PlayerBar: View {
                     .scaleEffect(isAnimatingPlayButton ? 1.15 : 1)
             }
             .buttonStyle(.plain)
-            .disabled(viewModel.canGenerate == false && viewModel.isPlaying == false)
+            .disabled(
+                viewModel.canGenerate == false
+                    && viewModel.isPlaying == false
+                    && viewModel.isGenerating == false
+            )
+            .help(viewModel.isGenerating ? "Cancel generation" : "Play")
 
             Button {
                 withAnimation(.spring(response: 0.2, dampingFraction: 0.55)) {
@@ -401,7 +416,7 @@ private struct PlayerBar: View {
         .overlay(alignment: .topTrailing) {
             if isHoveringDownloadButton {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Download directory")
+                    Text("Audio + SRT subtitle")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(AppPalette.muted)
 
