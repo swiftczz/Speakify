@@ -38,9 +38,37 @@ package enum AppDataLocation {
         return directoryURL
     }
 
+    /// Set when a damaged history store had to be set aside at launch, so the UI can
+    /// tell the user where the old file went instead of silently losing their history.
+    package nonisolated(unsafe) private(set) static var quarantinedHistoryStoreURL: URL?
+
+    /// Moves an unreadable store out of the way so a fresh one can be created. The
+    /// old file is kept, never deleted — a corrupt store is still the user's data.
+    @discardableResult
+    package static func quarantineHistoryStore(fileManager: FileManager = .default) -> URL? {
+        let rootURL = rootDirectoryURL(fileManager: fileManager)
+        let storeURL = rootURL.appending(path: historyStoreFileName)
+        guard fileManager.fileExists(atPath: storeURL.path(percentEncoded: false)) else { return nil }
+
+        let stamp = DateFormatter.quarantineStamp.string(from: .now)
+        let quarantineURL = rootURL.appending(path: "\(historyStoreFileName).corrupt-\(stamp)")
+
+        for suffix in ["", "-wal", "-shm"] {
+            let source = rootURL.appending(path: "\(historyStoreFileName)\(suffix)")
+            guard fileManager.fileExists(atPath: source.path(percentEncoded: false)) else { continue }
+            let destination = rootURL.appending(path: "\(quarantineURL.lastPathComponent)\(suffix)")
+            try? fileManager.moveItem(at: source, to: destination)
+        }
+
+        quarantinedHistoryStoreURL = quarantineURL
+        return quarantineURL
+    }
+
     private static func migrateLegacyDataIfNeeded(to rootURL: URL, fileManager: FileManager) {
         let legacyRootURL = legacyRootDirectoryURL(fileManager: fileManager)
-        guard fileManager.fileExists(atPath: legacyRootURL.path()) else { return }
+        // `path()` percent-encodes, and the legacy path contains "Application Support";
+        // checking the encoded string never matched, so the migration never ran.
+        guard fileManager.fileExists(atPath: legacyRootURL.path(percentEncoded: false)) else { return }
 
         migrateHistoryStoreIfNeeded(from: legacyRootURL, to: rootURL, fileManager: fileManager)
         migrateAudioCacheIfNeeded(from: legacyRootURL, to: rootURL, fileManager: fileManager)
@@ -66,7 +94,7 @@ package enum AppDataLocation {
 
     private static func migrateAudioCacheIfNeeded(from legacyRootURL: URL, to rootURL: URL, fileManager: FileManager) {
         let legacyCacheURL = legacyRootURL.appending(path: "AudioCache", directoryHint: .isDirectory)
-        guard fileManager.fileExists(atPath: legacyCacheURL.path()) else { return }
+        guard fileManager.fileExists(atPath: legacyCacheURL.path(percentEncoded: false)) else { return }
 
         let newCacheURL = rootURL.appending(path: "AudioCache", directoryHint: .isDirectory)
         ensureDirectoryExists(at: newCacheURL, fileManager: fileManager)
@@ -77,23 +105,34 @@ package enum AppDataLocation {
             options: [.skipsHiddenFiles]
         ) else { return }
 
+        var everyFileArrived = true
         for fileURL in cacheFiles {
             let destinationURL = newCacheURL.appending(path: fileURL.lastPathComponent)
-            moveItemIfNeeded(from: fileURL, to: destinationURL, fileManager: fileManager)
+            let arrived = moveItemIfNeeded(from: fileURL, to: destinationURL, fileManager: fileManager)
+            everyFileArrived = everyFileArrived && arrived
         }
 
-        try? fileManager.removeItem(at: legacyCacheURL)
+        // Reclaim the old directory only once every file is confirmed at its new
+        // location; otherwise a failed move would quietly destroy cached audio.
+        if everyFileArrived {
+            try? fileManager.removeItem(at: legacyCacheURL)
+        }
     }
 
-    private static func moveItemIfNeeded(from sourceURL: URL, to destinationURL: URL, fileManager: FileManager) {
-        guard fileManager.fileExists(atPath: sourceURL.path()) else { return }
-        guard fileManager.fileExists(atPath: destinationURL.path()) == false else { return }
+    /// Returns whether the item is present at the destination afterwards, which is
+    /// what callers actually need to know before they clean up the source.
+    @discardableResult
+    private static func moveItemIfNeeded(from sourceURL: URL, to destinationURL: URL, fileManager: FileManager) -> Bool {
+        let destinationPath = destinationURL.path(percentEncoded: false)
+        guard fileManager.fileExists(atPath: sourceURL.path(percentEncoded: false)) else { return true }
+        guard fileManager.fileExists(atPath: destinationPath) == false else { return true }
 
         do {
             try fileManager.moveItem(at: sourceURL, to: destinationURL)
         } catch {
             try? fileManager.copyItem(at: sourceURL, to: destinationURL)
         }
+        return fileManager.fileExists(atPath: destinationPath)
     }
 
     private static func ensureDirectoryExists(at directoryURL: URL, fileManager: FileManager) {
@@ -107,4 +146,13 @@ package enum AppDataLocation {
             ?? URL(filePath: NSHomeDirectory(), directoryHint: .isDirectory)
                 .appending(path: "Library/Application Support/\(legacyDirectoryName)", directoryHint: .isDirectory)
     }
+}
+
+private extension DateFormatter {
+    static let quarantineStamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMddHHmmss"
+        return formatter
+    }()
 }

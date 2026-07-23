@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+@testable import Speakify
 
 @MainActor
 enum ModelLogicTestSupport {

@@ -4,6 +4,57 @@ struct ElevenLabsProvider: TTSProvider {
     let id = "elevenlabs"
     let displayName = "ElevenLabs"
 
+    let capabilities = TTSProviderCapabilities(
+        outputFormats: ["mp3_44100_128", "mp3_44100_192", "mp3_22050_32", "wav_44100"],
+        defaultOutputFormat: "mp3_44100_128",
+        defaultModelID: "eleven_v3",
+        reportsQuota: true,
+        providesSubtitles: true,
+        providesCharacterAlignment: true,
+        acceptsLanguageHint: true,
+        meteredSynthesis: true,
+        apiKeyHint: "Create a key at elevenlabs.io under Profile → API Keys."
+    )
+
+    static let supportedModelIDs = [
+        "eleven_v3",
+        "eleven_multilingual_v2",
+        "eleven_flash_v2_5"
+    ]
+
+    /// Offline fallback for the anonymous `/v1/voices` catalog.
+    static let publicDefaultVoices: [TTSVoice] = [
+        publicVoice(id: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger - Laid-Back, Casual, Resonant", gender: "male"),
+        publicVoice(id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah - Mature, Reassuring, Confident", gender: "female"),
+        publicVoice(id: "FGY2WhTYpPnrIDTdsKH5", name: "Laura - Enthusiast, Quirky Attitude", gender: "female"),
+        publicVoice(id: "IKne3meq5aSn9XLyUdCD", name: "Charlie - Deep, Confident, Energetic", gender: "male"),
+        publicVoice(id: "JBFqnCBsd6RMkjVDRZzb", name: "George - Warm, Captivating Storyteller", gender: "male"),
+        publicVoice(id: "N2lVS1w4EtoT3dr4eOWO", name: "Callum - Husky Trickster", gender: "male"),
+        publicVoice(id: "SAz9YHcvj6GT2YYXdXww", name: "River - Relaxed, Neutral, Informative", gender: nil),
+        publicVoice(id: "SOYHLrjzK2X1ezoPC6cr", name: "Harry - Fierce Warrior", gender: "male"),
+        publicVoice(id: "TX3LPaxmHKxFdv7VOQHJ", name: "Liam - Energetic, Social Media Creator", gender: "male"),
+        publicVoice(id: "Xb7hH8MSUJpSbSDYk0k2", name: "Alice - Clear, Engaging Educator", gender: "female"),
+        publicVoice(id: "XrExE9yKIg1WjnnlVkGX", name: "Matilda - Knowledgable, Professional", gender: "female"),
+        publicVoice(id: "bIHbv24MWmeRgasZH58o", name: "Will - Relaxed Optimist", gender: "male"),
+        publicVoice(id: "cgSgspJ2msm6clMCkdW9", name: "Jessica - Playful, Bright, Warm", gender: "female"),
+        publicVoice(id: "cjVigY5qzO86Huf0OWal", name: "Eric - Smooth, Trustworthy", gender: "male"),
+        publicVoice(id: "hpp4J3VqNfWAUOO0d1Us", name: "Bella - Professional, Bright, Warm", gender: "female"),
+        publicVoice(id: "iP95p4xoKVk53GoZ742B", name: "Chris - Charming, Down-to-Earth", gender: "male"),
+        publicVoice(id: "nPczCjzI2devNBz1zQrb", name: "Brian - Deep, Resonant and Comforting", gender: "male"),
+        publicVoice(id: "onwK4e9ZLuTAKqWW03F9", name: "Daniel - Steady Broadcaster", gender: "male"),
+        publicVoice(id: "pFZP5JQG7iQjIQuC4Bku", name: "Lily - Velvety Actress", gender: "female"),
+        publicVoice(id: "pNInz6obpgDQGcFmaJgB", name: "Adam - Dominant, Firm", gender: "male"),
+        publicVoice(id: "pqHfZKP75CvOlQylNhV4", name: "Bill - Wise, Mature, Balanced", gender: "male")
+    ]
+
+    var fallbackModels: [TTSModel] {
+        [
+            TTSModel(id: "eleven_v3", name: "Eleven v3", canDoTextToSpeech: true, servesProVoices: false),
+            TTSModel(id: "eleven_multilingual_v2", name: "Eleven Multilingual v2", canDoTextToSpeech: true, servesProVoices: false),
+            TTSModel(id: "eleven_flash_v2_5", name: "Eleven Flash v2.5", canDoTextToSpeech: true, servesProVoices: false)
+        ]
+    }
+
     private let baseURL = URL(string: "https://api.elevenlabs.io")!
     private let session: URLSession
 
@@ -21,19 +72,20 @@ struct ElevenLabsProvider: TTSProvider {
     }
 
     func fetchModels(apiKey: String) async throws -> [TTSModel] {
-        guard apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
-            throw TTSProviderError.missingAPIKey
+        let resolvedAPIKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard resolvedAPIKey.isEmpty == false else {
+            return fallbackModels
         }
 
         var request = URLRequest(url: baseURL.appending(path: "/v1/models"))
         request.httpMethod = "GET"
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+        request.setValue(resolvedAPIKey, forHTTPHeaderField: "xi-api-key")
 
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
 
         let decoded = try JSONDecoder().decode([ElevenLabsModel].self, from: data)
-        let supportedIDs = TTSModel.supportedIDs
+        let supportedIDs = Self.supportedModelIDs
         let models = decoded
             .filter { model in
                 model.canDoTextToSpeech && supportedIDs.contains(model.modelID)
@@ -51,29 +103,86 @@ struct ElevenLabsProvider: TTSProvider {
                     < (supportedIDs.firstIndex(of: second.id) ?? Int.max)
             }
 
-        return models.isEmpty ? TTSModel.fallbackModels : models
+        return models.isEmpty ? fallbackModels : models
     }
 
-    func fetchVoices(apiKey: String) async throws -> [TTSVoice] {
-        guard apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
-            throw TTSProviderError.missingAPIKey
+    func fetchVoiceCatalog(apiKey: String) async throws -> TTSVoiceCatalog {
+        let publicVoices = await fetchPublicVoices()
+        let resolvedAPIKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard resolvedAPIKey.isEmpty == false else {
+            return TTSVoiceCatalog(publicVoices: publicVoices, accountVoices: [])
         }
 
-        var components = URLComponents(url: baseURL.appending(path: "/v2/voices"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "page_size", value: "100"),
-            URLQueryItem(name: "include_total_count", value: "false")
-        ]
+        // The account half failing (bad key, rate limit, outage) must not take the
+        // public half down with it: a usable picker beats an empty one.
+        do {
+            let accountVoices = try await fetchAccountVoices(apiKey: resolvedAPIKey)
+            return TTSVoiceCatalog(publicVoices: publicVoices, accountVoices: accountVoices)
+        } catch {
+            try Task.checkCancellation()
+            return TTSVoiceCatalog(
+                publicVoices: publicVoices,
+                accountVoices: [],
+                accountFailure: error.localizedDescription
+            )
+        }
+    }
 
-        var request = URLRequest(url: components.url!)
+    private func fetchPublicVoices() async -> [TTSVoice] {
+        var request = URLRequest(url: baseURL.appending(path: "/v1/voices"))
         request.httpMethod = "GET"
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
 
-        let (data, response) = try await session.data(for: request)
-        try validate(response: response, data: data)
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response: response, data: data)
+            let voices = try decodeVoices(from: data)
+            return voices.isEmpty ? Self.publicDefaultVoices : voices
+        } catch {
+            return Self.publicDefaultVoices
+        }
+    }
 
-        let decoded = try JSONDecoder().decode(ElevenLabsVoicesResponse.self, from: data)
-        return decoded.voices
+    /// `/v2/voices` pages at 100 entries, so an account with more cloned voices than
+    /// that needs every page followed before the picker shows a complete list.
+    private func fetchAccountVoices(apiKey: String) async throws -> [TTSVoice] {
+        var voices: [ElevenLabsVoice] = []
+        var nextPageToken: String?
+        var pagesFetched = 0
+
+        repeat {
+            try Task.checkCancellation()
+
+            var components = URLComponents(url: baseURL.appending(path: "/v2/voices"), resolvingAgainstBaseURL: false)!
+            components.queryItems = [
+                URLQueryItem(name: "page_size", value: "100"),
+                URLQueryItem(name: "include_total_count", value: "false")
+            ] + (nextPageToken.map { [URLQueryItem(name: "next_page_token", value: $0)] } ?? [])
+
+            var request = URLRequest(url: components.url!)
+            request.httpMethod = "GET"
+            request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+
+            let (data, response) = try await session.data(for: request)
+            try validate(response: response, data: data)
+
+            let page = try JSONDecoder().decode(ElevenLabsVoicesResponse.self, from: data)
+            voices += page.voices
+            nextPageToken = page.hasMore ? page.nextPageToken : nil
+            pagesFetched += 1
+        } while nextPageToken != nil && pagesFetched < Self.maxVoicePages
+
+        return normalized(voices)
+    }
+
+    /// A stop so a service that keeps handing back a token can never spin forever.
+    private static let maxVoicePages = 20
+
+    private func decodeVoices(from data: Data) throws -> [TTSVoice] {
+        normalized(try JSONDecoder().decode(ElevenLabsVoicesResponse.self, from: data).voices)
+    }
+
+    private func normalized(_ voices: [ElevenLabsVoice]) -> [TTSVoice] {
+        voices
             .map {
                 TTSVoice(
                     id: $0.voiceID,
@@ -94,7 +203,7 @@ struct ElevenLabsProvider: TTSProvider {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    func fetchSubscription(apiKey: String) async throws -> ElevenLabsSubscription {
+    func fetchQuota(apiKey: String) async throws -> TTSQuota? {
         guard apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             throw TTSProviderError.missingAPIKey
         }
@@ -106,7 +215,7 @@ struct ElevenLabsProvider: TTSProvider {
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data)
 
-        return try JSONDecoder().decode(ElevenLabsSubscription.self, from: data)
+        return try JSONDecoder().decode(ElevenLabsSubscriptionResponse.self, from: data).quota
     }
 
     func synthesize(request speechRequest: SpeechRequest, apiKey: String) async throws -> GeneratedSpeech {
@@ -164,6 +273,20 @@ struct ElevenLabsProvider: TTSProvider {
     }
 }
 
+private func publicVoice(id: String, name: String, gender: String?) -> TTSVoice {
+    TTSVoice(
+        id: id,
+        name: name,
+        category: "default",
+        detail: nil,
+        previewURL: nil,
+        gender: gender,
+        accent: nil,
+        locale: nil,
+        language: "English"
+    )
+}
+
 private struct ElevenLabsTimestampedSpeech: Decodable {
     let audioBase64: String
     let alignment: SpeechAlignment?
@@ -192,6 +315,22 @@ private struct ElevenLabsModel: Decodable {
 
 private struct ElevenLabsVoicesResponse: Decodable {
     let voices: [ElevenLabsVoice]
+    let hasMore: Bool
+    let nextPageToken: String?
+
+    enum CodingKeys: String, CodingKey {
+        case voices
+        case hasMore = "has_more"
+        case nextPageToken = "next_page_token"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        voices = try container.decode([ElevenLabsVoice].self, forKey: .voices)
+        // `/v1/voices` returns neither field and is never paged.
+        hasMore = try container.decodeIfPresent(Bool.self, forKey: .hasMore) ?? false
+        nextPageToken = try container.decodeIfPresent(String.self, forKey: .nextPageToken)
+    }
 }
 
 private struct ElevenLabsVoice: Decodable {
@@ -277,19 +416,23 @@ private struct ElevenLabsVoiceSettings: Encodable {
     }
 }
 
-struct ElevenLabsSubscription: Decodable, Equatable, Sendable {
+private struct ElevenLabsSubscriptionResponse: Decodable {
     let characterCount: Int
     let characterLimit: Int
+    let canExtendCharacterLimit: Bool?
 
-    var remaining: Int { max(0, characterLimit - characterCount) }
-    var usedFraction: Double {
-        guard characterLimit > 0 else { return 0 }
-        return min(1, Double(characterCount) / Double(characterLimit))
+    var quota: TTSQuota {
+        TTSQuota(
+            characterCount: characterCount,
+            characterLimit: characterLimit,
+            canExtendCharacterLimit: canExtendCharacterLimit ?? false
+        )
     }
 
     enum CodingKeys: String, CodingKey {
         case characterCount = "character_count"
         case characterLimit = "character_limit"
+        case canExtendCharacterLimit = "can_extend_character_limit"
     }
 }
 

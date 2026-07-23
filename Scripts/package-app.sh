@@ -22,6 +22,11 @@ cp "$ROOT_DIR/build/release/Speakify" "$MACOS_DIR/Speakify"
 cp "$ROOT_DIR/Support/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$ROOT_DIR/Sources/Speakify/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 
-rm -rf "$ROOT_DIR/.build"
+# The release build uses its own scratch path (build/), so .build/ here only holds
+# the debug and test artifacts. Removing it made every following `swift test` a cold
+# build; pass --clean to opt into that.
+if [[ "${1:-}" == "--clean" ]]; then
+  rm -rf "$ROOT_DIR/.build"
+fi
 
 echo "$APP_DIR"

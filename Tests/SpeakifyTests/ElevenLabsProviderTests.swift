@@ -22,6 +22,178 @@ final class ElevenLabsProviderTests: XCTestCase {
         XCTAssertEqual(body["language_code"] as? String, "zh")
     }
 
+    func testQuotaDecodesWhetherOverageIsAvailable() async throws {
+        MockURLProtocol.responder = { _ in
+            let payload: [String: Any] = [
+                "character_count": 8_426,
+                "character_limit": 10_000,
+                "can_extend_character_limit": true
+            ]
+            return (Self.httpResponse(statusCode: 200), try JSONSerialization.data(withJSONObject: payload))
+        }
+
+        let provider = ElevenLabsProvider(session: MockURLProtocol.makeSession())
+        let fetchedQuota = try await provider.fetchQuota(apiKey: "key")
+        let quota = try XCTUnwrap(fetchedQuota)
+
+        XCTAssertEqual(quota.remaining, 1_574)
+        XCTAssertTrue(quota.canExtendCharacterLimit)
+    }
+
+    func testCatalogWithoutAPIKeyLoadsAnonymousPublicVoices() async throws {
+        MockURLProtocol.responder = { request in
+            guard request.url?.path == "/v1/voices",
+                  request.value(forHTTPHeaderField: "xi-api-key") == nil else {
+                throw URLError(.userAuthenticationRequired)
+            }
+            let payload: [String: Any] = [
+                "voices": [
+                    [
+                        "voice_id": "public-voice",
+                        "name": "Public Voice",
+                        "category": "premade",
+                        "labels": ["gender": "female"]
+                    ]
+                ]
+            ]
+            return (Self.httpResponse(statusCode: 200), try JSONSerialization.data(withJSONObject: payload))
+        }
+
+        let provider = ElevenLabsProvider(session: MockURLProtocol.makeSession())
+        let models = try await provider.fetchModels(apiKey: " ")
+        let catalog = try await provider.fetchVoiceCatalog(apiKey: "")
+
+        XCTAssertEqual(models.map(\.id), ElevenLabsProvider.supportedModelIDs)
+        XCTAssertEqual(catalog.publicVoices.map(\.id), ["public-voice"])
+        XCTAssertTrue(catalog.accountVoices.isEmpty)
+        XCTAssertEqual(MockURLProtocol.lastRequest?.url?.path, "/v1/voices")
+    }
+
+    func testCatalogWithAPIKeyMergesPublicAndAccountVoicesWithoutDuplicates() async throws {
+        MockURLProtocol.responder = { request in
+            let voices: [[String: Any]]
+            switch request.url?.path {
+            case "/v1/voices":
+                guard request.value(forHTTPHeaderField: "xi-api-key") == nil else {
+                    throw URLError(.userAuthenticationRequired)
+                }
+                voices = [
+                    [
+                        "voice_id": "public-voice",
+                        "name": "Public Voice",
+                        "category": "premade"
+                    ]
+                ]
+            case "/v2/voices":
+                guard request.value(forHTTPHeaderField: "xi-api-key") == "account-key" else {
+                    throw URLError(.userAuthenticationRequired)
+                }
+                voices = [
+                    [
+                        "voice_id": "public-voice",
+                        "name": "Public Voice",
+                        "category": "premade"
+                    ],
+                    [
+                        "voice_id": "personal-voice",
+                        "name": "My Voice",
+                        "category": "cloned",
+                        "labels": ["gender": "female"]
+                    ]
+                ]
+            default:
+                throw URLError(.badURL)
+            }
+            let payload: [String: Any] = ["voices": voices]
+            return (Self.httpResponse(statusCode: 200), try JSONSerialization.data(withJSONObject: payload))
+        }
+
+        let provider = ElevenLabsProvider(session: MockURLProtocol.makeSession())
+        let catalog = try await provider.fetchVoiceCatalog(apiKey: " account-key ")
+
+        XCTAssertEqual(catalog.publicVoices.map(\.id), ["public-voice"])
+        XCTAssertEqual(catalog.accountVoices.map(\.id), ["personal-voice"])
+        XCTAssertEqual(catalog.voices.map(\.id), ["public-voice", "personal-voice"])
+        XCTAssertEqual(MockURLProtocol.lastRequest?.url?.path, "/v2/voices")
+    }
+
+    /// An account with more than one page of voices must be followed to the end,
+    /// otherwise the picker silently stops at the first 100.
+    func testAccountVoicesFollowEveryPage() async throws {
+        nonisolated(unsafe) var requestedTokens: [String?] = []
+        MockURLProtocol.responder = { request in
+            guard request.url?.path == "/v2/voices" else {
+                let payload: [String: Any] = ["voices": []]
+                return (Self.httpResponse(statusCode: 200), try JSONSerialization.data(withJSONObject: payload))
+            }
+
+            let components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
+            let token = components?.queryItems?.first { $0.name == "next_page_token" }?.value
+            requestedTokens.append(token)
+
+            let payload: [String: Any]
+            switch token {
+            case nil:
+                payload = [
+                    "voices": [["voice_id": "page-1", "name": "Page One"]],
+                    "has_more": true,
+                    "next_page_token": "token-2"
+                ]
+            case "token-2":
+                payload = [
+                    "voices": [["voice_id": "page-2", "name": "Page Two"]],
+                    "has_more": false
+                ]
+            default:
+                throw URLError(.badURL)
+            }
+            return (Self.httpResponse(statusCode: 200), try JSONSerialization.data(withJSONObject: payload))
+        }
+
+        let provider = ElevenLabsProvider(session: MockURLProtocol.makeSession())
+        let catalog = try await provider.fetchVoiceCatalog(apiKey: "account-key")
+
+        XCTAssertEqual(requestedTokens, [nil, "token-2"])
+        XCTAssertEqual(catalog.accountVoices.map(\.id).sorted(), ["page-1", "page-2"])
+        XCTAssertNil(catalog.accountFailure)
+    }
+
+    /// The public half of the catalog is still worth showing when the account half
+    /// fails, so the picker never ends up empty over a bad key alone.
+    func testAccountVoiceFailureKeepsPublicVoicesAndReportsTheFailure() async throws {
+        MockURLProtocol.responder = { request in
+            guard request.url?.path == "/v1/voices" else {
+                let payload = ["detail": ["status": "invalid_api_key", "message": "Invalid API key."]]
+                return (Self.httpResponse(statusCode: 401), try JSONSerialization.data(withJSONObject: payload))
+            }
+            let payload: [String: Any] = [
+                "voices": [["voice_id": "public-voice", "name": "Public Voice"]]
+            ]
+            return (Self.httpResponse(statusCode: 200), try JSONSerialization.data(withJSONObject: payload))
+        }
+
+        let provider = ElevenLabsProvider(session: MockURLProtocol.makeSession())
+        let catalog = try await provider.fetchVoiceCatalog(apiKey: "bad-key")
+
+        XCTAssertEqual(catalog.publicVoices.map(\.id), ["public-voice"])
+        XCTAssertTrue(catalog.accountVoices.isEmpty)
+        XCTAssertEqual(catalog.accountFailure?.contains("Invalid API key."), true)
+    }
+
+    func testAnonymousCatalogFallsBackToBundledVoicesWhenRequestFails() async throws {
+        MockURLProtocol.responder = { _ in
+            (Self.httpResponse(statusCode: 503), Data())
+        }
+
+        let provider = ElevenLabsProvider(session: MockURLProtocol.makeSession())
+        let catalog = try await provider.fetchVoiceCatalog(apiKey: "")
+
+        XCTAssertEqual(catalog.publicVoices, ElevenLabsProvider.publicDefaultVoices)
+        XCTAssertEqual(catalog.publicVoices.count, 21)
+        XCTAssertTrue(catalog.publicVoices.contains { $0.name.hasPrefix("Adam") })
+        XCTAssertTrue(catalog.publicVoices.contains { $0.name.hasPrefix("Bella") })
+    }
+
     func testSynthesizeSurfacesServiceErrorMessageAndCode() async throws {
         let error = try await synthesisError(
             statusCode: 401,
@@ -124,6 +296,7 @@ final class ElevenLabsProviderTests: XCTestCase {
 final class MockURLProtocol: URLProtocol {
     nonisolated(unsafe) static var responder: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
     nonisolated(unsafe) static var lastRequestBody: Data?
+    nonisolated(unsafe) static var lastRequest: URLRequest?
 
     static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
@@ -134,6 +307,7 @@ final class MockURLProtocol: URLProtocol {
     static func reset() {
         responder = nil
         lastRequestBody = nil
+        lastRequest = nil
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -141,6 +315,7 @@ final class MockURLProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        MockURLProtocol.lastRequest = request
         MockURLProtocol.lastRequestBody = request.readBody()
 
         guard let responder = MockURLProtocol.responder else {

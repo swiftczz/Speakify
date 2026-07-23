@@ -3,20 +3,52 @@ import Foundation
 enum FileNameFormatter {
     static func speechFileName(text: String, voiceName: String, fileExtension: String, date: Date = .now) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMddHHmmss"
 
         let title = text
             .split(whereSeparator: \.isNewline)
             .first
             .map(String.init) ?? "speech"
+        let primaryVoiceName = primaryVoiceName(from: voiceName)
 
-        let base = "\(formatter.string(from: date))-\(voiceName)-\(title)"
+        let base = "\(formatter.string(from: date))-\(primaryVoiceName)-\(title)"
         let sanitized = base
-            .replacingOccurrences(of: "[^A-Za-z0-9._ -]+", with: "", options: .regularExpression)
+            .components(separatedBy: disallowedNameCharacters).joined()
             .replacingOccurrences(of: "\\s+", with: "-", options: .regularExpression)
+            .replacingOccurrences(of: "-+", with: "-", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: ".-_ "))
 
-        return String(sanitized.prefix(80)) + ".\(fileExtension)"
+        return truncated(sanitized) + ".\(fileExtension)"
+    }
+
+    /// Everything outside letters, digits and the three separators a file name
+    /// reads well with. Letters are Unicode-wide, so Chinese and other non-Latin
+    /// scripts survive; only punctuation and symbols are dropped.
+    private static let disallowedNameCharacters: CharacterSet = {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: ". -_")
+        return allowed.inverted
+    }()
+
+    /// HFS+/APFS cap file names at 255 bytes, and one CJK character costs three,
+    /// so a character-only limit is not enough to stay inside it.
+    private static func truncated(_ name: String, characterLimit: Int = 80, byteLimit: Int = 180) -> String {
+        var result = String(name.prefix(characterLimit))
+        while result.utf8.count > byteLimit {
+            result.removeLast()
+        }
+        return result
+    }
+
+    private static func primaryVoiceName(from voiceName: String) -> String {
+        let separators = [" - ", " – ", " — ", " / ", " · ", ", "]
+        let firstSeparator = separators
+            .compactMap { voiceName.range(of: $0)?.lowerBound }
+            .min()
+        let name = firstSeparator.map { String(voiceName[..<$0]) } ?? voiceName
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedName.isEmpty ? "Voice" : trimmedName
     }
 
     /// A destination that collides with neither an existing file nor its companion

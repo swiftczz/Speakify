@@ -3,6 +3,119 @@ import XCTest
 @testable import Speakify
 
 final class ModelLogicTests: XCTestCase {
+    func testAppSettingsPersistsAPIKeyUnderProviderScope() {
+        let suiteName = "SpeakifyTests.APIKey.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let firstSettings = AppSettings(defaults: defaults)
+        firstSettings.apiKey = "test-api-key"
+
+        let restoredSettings = AppSettings(defaults: defaults)
+
+        XCTAssertEqual(restoredSettings.apiKey, "test-api-key")
+        XCTAssertEqual(defaults.string(forKey: "apiKey.elevenlabs"), "test-api-key")
+    }
+
+    func testAppSettingsMigratesLegacyFlatValuesToElevenLabsScope() {
+        let suiteName = "SpeakifyTests.Migration.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("legacy-key", forKey: "apiKey")
+        defaults.set("eleven_flash_v2_5", forKey: "modelID")
+        defaults.set("wav_44100", forKey: "outputFormat")
+
+        let settings = AppSettings(defaults: defaults)
+
+        XCTAssertEqual(settings.apiKey, "legacy-key")
+        XCTAssertEqual(settings.modelID, "eleven_flash_v2_5")
+        XCTAssertEqual(settings.outputFormat, "wav_44100")
+        XCTAssertNil(defaults.string(forKey: "apiKey"), "The flat legacy key should be removed after migration.")
+    }
+
+    func testAppSettingsKeepsPerProviderValuesAcrossSwitches() {
+        let suiteName = "SpeakifyTests.ProviderSwitch.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let settings = AppSettings(defaults: defaults)
+        settings.apiKey = "eleven-key"
+
+        settings.providerID = "mimo"
+        XCTAssertEqual(settings.apiKey, "", "MiMo starts without a key of its own.")
+        XCTAssertEqual(settings.modelID, "mimo-v2.5-tts")
+        XCTAssertEqual(settings.outputFormat, "mp3")
+        settings.apiKey = "mimo-key"
+
+        settings.providerID = "elevenlabs"
+        XCTAssertEqual(settings.apiKey, "eleven-key")
+        XCTAssertEqual(settings.modelID, "eleven_v3")
+        XCTAssertEqual(settings.outputFormat, "mp3_44100_128")
+        XCTAssertEqual(settings.apiKey(for: "mimo"), "mimo-key")
+    }
+
+    func testAppSettingsMigratesExistingMiMoWAVDefaultToMP3OnlyOnce() {
+        let suiteName = "SpeakifyTests.MiMoFormatMigration.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("mimo", forKey: "providerID")
+        defaults.set("wav", forKey: "outputFormat.mimo")
+
+        let migratedSettings = AppSettings(defaults: defaults)
+        XCTAssertEqual(migratedSettings.outputFormat, "mp3")
+
+        migratedSettings.outputFormat = "wav"
+        let restoredSettings = AppSettings(defaults: defaults)
+        XCTAssertEqual(restoredSettings.outputFormat, "wav", "A later explicit WAV choice must be preserved.")
+    }
+
+    func testAppSettingsRejectsUnknownStoredProvider() {
+        let suiteName = "SpeakifyTests.UnknownProvider.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("discontinued-provider", forKey: "providerID")
+
+        let settings = AppSettings(defaults: defaults)
+
+        XCTAssertEqual(settings.providerID, "elevenlabs")
+    }
+
+    func testEstimatedCreditCostUsesFlashDiscount() {
+        XCTAssertEqual(
+            SpeechViewModel.estimatedCreditCost(
+                characterCount: 1_849,
+                modelID: "eleven_flash_v2_5"
+            ),
+            925
+        )
+    }
+
+    func testEstimatedCreditCostUsesFullRateForElevenV3() {
+        XCTAssertEqual(
+            SpeechViewModel.estimatedCreditCost(
+                characterCount: 1_849,
+                modelID: "eleven_v3"
+            ),
+            1_849
+        )
+    }
+
+    func testAppSettingsPersistsDraftTextAcrossInstances() {
+        let suiteName = "SpeakifyTests.DraftText.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let firstSettings = AppSettings(defaults: defaults)
+        firstSettings.draftText = "My Cousin the Soup Star"
+
+        let restoredSettings = AppSettings(defaults: defaults)
+
+        XCTAssertEqual(restoredSettings.draftText, "My Cousin the Soup Star")
+    }
+
     func testSubtitleFormatterBuildsAlignedSRTCues() throws {
         let characters = Array("Hello world. Next line!").map(String.init)
         let alignment = SpeechAlignment(
@@ -45,6 +158,17 @@ final class ModelLogicTests: XCTestCase {
         XCTAssertTrue(subtitle.contains("excessive at 3 a.m."))
     }
 
+    func testSubtitleFormatterEstimatesChineseSentenceTimingFromAudioDuration() throws {
+        let subtitle = try SubtitleFormatter.estimatedSRT(
+            text: "你好。世界！",
+            duration: 6
+        )
+
+        XCTAssertEqual(subtitle.components(separatedBy: " --> ").count - 1, 2)
+        XCTAssertTrue(subtitle.contains("00:00:00,000 --> 00:00:03,000\n你好。"))
+        XCTAssertTrue(subtitle.contains("00:00:03,000 --> 00:00:06,000\n世界！"))
+    }
+
     func testSpeechFileNameSanitizesTextAndVoice() {
         let date = Date(timeIntervalSince1970: 1_712_345_678)
         let fileName = FileNameFormatter.speechFileName(
@@ -59,6 +183,22 @@ final class ModelLogicTests: XCTestCase {
         XCTAssertFalse(fileName.contains(","))
         XCTAssertFalse(fileName.contains("\n"))
         XCTAssertLessThanOrEqual(fileName.count, 84)
+    }
+
+    func testSpeechFileNameUsesCompactTimestampAndPrimaryVoiceName() {
+        let fileName = FileNameFormatter.speechFileName(
+            text: "My Cousin the Soup Star\nThe rest is not part of the name.",
+            voiceName: "Adam - Dominant, Firm",
+            fileExtension: "mp3",
+            date: Date(timeIntervalSince1970: 1_712_345_678)
+        )
+
+        XCTAssertNotNil(fileName.range(
+            of: #"^\d{14}-Adam-My-Cousin-the-Soup-Star\.mp3$"#,
+            options: .regularExpression
+        ))
+        XCTAssertFalse(fileName.contains("Dominant"))
+        XCTAssertFalse(fileName.contains("---"))
     }
 
     func testSpeechFileNameFallsBackForEmptyText() {

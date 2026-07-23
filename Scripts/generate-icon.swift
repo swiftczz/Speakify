@@ -92,7 +92,7 @@ func drawIcon(pixels: Int, to url: URL) throws {
 
     let scale = CGFloat(pixels) / 1024.0
 
-    // Opaque macOS-style rounded-square base.
+    // Opaque macOS-style rounded-square base with a bright sky-to-cyan gradient.
     let bgRect = NSRect(x: s(58, scale), y: s(58, scale), width: s(908, scale), height: s(908, scale))
     let bgPath = NSBezierPath(roundedRect: bgRect, xRadius: s(214, scale), yRadius: s(214, scale))
 
@@ -100,81 +100,68 @@ func drawIcon(pixels: Int, to url: URL) throws {
     context.setShadow(
         offset: CGSize(width: 0, height: -s(18, scale)),
         blur: s(32, scale),
-        color: NSColor.black.withAlphaComponent(0.10).cgColor
+        color: NSColor.black.withAlphaComponent(0.12).cgColor
     )
-    fillPathWithVerticalGradient(
-        bgPath,
-        topColor: NSColor(calibratedWhite: 0.995, alpha: 1),
-        bottomColor: NSColor(calibratedWhite: 0.925, alpha: 1),
-        in: bgRect
-    )
+    NSGraphicsContext.saveGraphicsState()
+    bgPath.addClip()
+    NSGradient(colors: [
+        NSColor(calibratedRed: 0.16, green: 0.47, blue: 0.96, alpha: 1),   // vivid blue
+        NSColor(calibratedRed: 0.18, green: 0.66, blue: 0.99, alpha: 1),   // sky blue
+        NSColor(calibratedRed: 0.36, green: 0.87, blue: 0.98, alpha: 1)    // light cyan
+    ])?.draw(in: bgRect, angle: 68)
+    NSGraphicsContext.restoreGraphicsState()
     context.restoreGState()
 
-    // Refined outer edge and inner highlight.
-    NSColor(calibratedWhite: 0.80, alpha: 0.72).setStroke()
-    bgPath.lineWidth = max(1, s(2.2, scale))
-    bgPath.stroke()
+    // Airy top-corner glow to keep the surface feeling light.
+    let glowRect = NSRect(
+        x: bgRect.minX - s(120, scale),
+        y: bgRect.maxY - s(430, scale),
+        width: s(760, scale),
+        height: s(560, scale)
+    )
+    context.saveGState()
+    bgPath.addClip()
+    NSGraphicsContext.saveGraphicsState()
+    NSGradient(
+        starting: NSColor.white.withAlphaComponent(0.32),
+        ending: NSColor.white.withAlphaComponent(0)
+    )?.draw(in: NSBezierPath(ovalIn: glowRect), relativeCenterPosition: .zero)
+    NSGraphicsContext.restoreGraphicsState()
+    context.restoreGState()
 
+    // Soft inner highlight along the edge.
     let innerHighlightRect = bgRect.insetBy(dx: s(8, scale), dy: s(8, scale))
     let innerHighlight = NSBezierPath(
         roundedRect: innerHighlightRect,
         xRadius: s(206, scale),
         yRadius: s(206, scale)
     )
-    NSColor.white.withAlphaComponent(0.72).setStroke()
-    innerHighlight.lineWidth = max(0.75, s(1.5, scale))
+    NSColor.white.withAlphaComponent(0.45).setStroke()
+    innerHighlight.lineWidth = max(0.75, s(2, scale))
     innerHighlight.stroke()
 
-    // Larger deep-charcoal circular core with subtle depth.
-    let circleMargin = s(138, scale)
-    let circleRect = NSRect(
-        x: circleMargin,
-        y: circleMargin,
-        width: CGFloat(pixels) - circleMargin * 2,
-        height: CGFloat(pixels) - circleMargin * 2
+    // Translucent halo behind the waveform for gentle focus.
+    let haloMargin = s(176, scale)
+    let haloRect = NSRect(
+        x: haloMargin,
+        y: haloMargin,
+        width: CGFloat(pixels) - haloMargin * 2,
+        height: CGFloat(pixels) - haloMargin * 2
     )
-    let circlePath = NSBezierPath(ovalIn: circleRect)
+    NSColor.white.withAlphaComponent(0.14).setFill()
+    NSBezierPath(ovalIn: haloRect).fill()
+    NSColor.white.withAlphaComponent(0.20).setStroke()
+    let haloRing = NSBezierPath(ovalIn: haloRect.insetBy(dx: s(-14, scale), dy: s(-14, scale)))
+    haloRing.lineWidth = max(1, s(6, scale))
+    haloRing.stroke()
 
-    context.saveGState()
-    context.setShadow(
-        offset: CGSize(width: 0, height: -s(10, scale)),
-        blur: s(24, scale),
-        color: NSColor.black.withAlphaComponent(0.30).cgColor
-    )
-    fillPathWithVerticalGradient(
-        circlePath,
-        topColor: NSColor(calibratedWhite: 0.22, alpha: 1),
-        bottomColor: NSColor(calibratedWhite: 0.045, alpha: 1),
-        in: circleRect
-    )
-    context.restoreGState()
-
-    NSColor.black.withAlphaComponent(0.42).setStroke()
-    circlePath.lineWidth = max(1, s(2, scale))
-    circlePath.stroke()
-
-    // Subtle top sheen on the circular core.
-    let sheenRect = NSRect(
-        x: circleRect.minX + s(54, scale),
-        y: circleRect.midY + s(66, scale),
-        width: circleRect.width - s(108, scale),
-        height: s(170, scale)
-    )
-    let sheenPath = NSBezierPath(ovalIn: sheenRect)
-    context.saveGState()
-    circlePath.addClip()
-    NSColor.white.withAlphaComponent(0.045).setFill()
-    sheenPath.fill()
-    context.restoreGState()
-
-    // Custom waveform instead of SF Symbol, tuned for the optimized logo.
-    // The two tallest center bars subtly imply "11" for stronger brand memory.
+    // Bouncy waveform: a lively rise-and-fall rhythm in crisp white.
     let waveformPath = NSBezierPath()
     let center = NSPoint(x: bounds.midX, y: bounds.midY)
-    let barWidth = s(42, scale)
-    let spacing = s(76, scale)
-    let heights: [CGFloat] = [112, 220, 370, 370, 220, 112].map { s(CGFloat($0), scale) }
-    let centerOffsets: [CGFloat] = [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5].map { CGFloat($0) * spacing }
+    let barWidth = s(58, scale)
+    let spacing = s(96, scale)
+    let heights: [CGFloat] = [150, 300, 470, 560, 380, 220, 130].map { s(CGFloat($0), scale) }
+    let centerOffsets: [CGFloat] = [-3, -2, -1, 0, 1, 2, 3].map { CGFloat($0) * spacing }
 
     for (index, offset) in centerOffsets.enumerated() {
         addRoundedVerticalBar(
@@ -188,15 +175,15 @@ func drawIcon(pixels: Int, to url: URL) throws {
 
     context.saveGState()
     context.setShadow(
-        offset: CGSize(width: 0, height: -s(2, scale)),
-        blur: s(4, scale),
-        color: NSColor.black.withAlphaComponent(0.18).cgColor
+        offset: CGSize(width: 0, height: -s(6, scale)),
+        blur: s(14, scale),
+        color: NSColor(calibratedRed: 0.05, green: 0.25, blue: 0.55, alpha: 0.28).cgColor
     )
     fillPathWithVerticalGradient(
         waveformPath,
         topColor: NSColor.white,
-        bottomColor: NSColor(calibratedWhite: 0.92, alpha: 1),
-        in: circleRect
+        bottomColor: NSColor(calibratedRed: 0.88, green: 0.97, blue: 1.0, alpha: 1),
+        in: bounds
     )
     context.restoreGState()
 

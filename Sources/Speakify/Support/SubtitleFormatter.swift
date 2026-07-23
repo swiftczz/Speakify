@@ -18,6 +18,28 @@ enum SubtitleFormatter {
         }.joined(separator: "\n\n") + "\n"
     }
 
+    /// Builds a useful SRT when a provider returns audio without character
+    /// timestamps. Cue boundaries follow sentences and their times are
+    /// distributed proportionally across the measured audio duration.
+    static func estimatedSRT(text: String, duration: TimeInterval) throws -> String {
+        let characters = Array(text).map(String.init)
+        guard characters.isEmpty == false, duration > 0 else {
+            throw TTSProviderError.invalidResponse
+        }
+
+        let characterDuration = duration / Double(characters.count)
+        let alignment = SpeechAlignment(
+            characters: characters,
+            characterStartTimesSeconds: characters.indices.map {
+                Double($0) * characterDuration
+            },
+            characterEndTimesSeconds: characters.indices.map {
+                Double($0 + 1) * characterDuration
+            }
+        )
+        return try srt(from: alignment)
+    }
+
     private static func makeCues(from alignment: SpeechAlignment) -> [Cue] {
         let characters = alignment.characters
         var cues: [Cue] = []
@@ -91,7 +113,18 @@ enum SubtitleFormatter {
     private static func wrapped(_ text: String) -> String {
         guard text.count > lineCharacterLimit else { return text }
         let words = text.split(separator: " ")
-        guard words.count > 1 else { return text }
+        guard words.count > 1 else {
+            return stride(from: 0, to: text.count, by: lineCharacterLimit)
+                .map { offset in
+                    let start = text.index(text.startIndex, offsetBy: offset)
+                    let end = text.index(
+                        start,
+                        offsetBy: min(lineCharacterLimit, text.distance(from: start, to: text.endIndex))
+                    )
+                    return String(text[start..<end])
+                }
+                .joined(separator: "\n")
+        }
 
         var lines: [String] = []
         var currentLine = ""
@@ -143,6 +176,9 @@ enum SubtitleFormatter {
             next += 1
         }
 
+        if character.rangeOfCharacter(from: CharacterSet(charactersIn: "。！？")) != nil {
+            return end
+        }
         return next == characters.count || isWhitespace(characters[next]) ? end : nil
     }
 

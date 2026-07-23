@@ -5,18 +5,42 @@ struct TTSModel: Identifiable, Hashable, Sendable {
     let name: String
     let canDoTextToSpeech: Bool
     let servesProVoices: Bool
+}
 
-    static let supportedIDs = [
-        "eleven_v3",
-        "eleven_multilingual_v2",
-        "eleven_flash_v2_5"
-    ]
+/// A provider-neutral view of "how much can I still synthesize".
+struct TTSQuota: Equatable, Sendable {
+    let characterCount: Int
+    let characterLimit: Int
+    let canExtendCharacterLimit: Bool
 
-    static let fallbackModels: [TTSModel] = [
-        TTSModel(id: "eleven_v3", name: "Eleven v3", canDoTextToSpeech: true, servesProVoices: false),
-        TTSModel(id: "eleven_multilingual_v2", name: "Eleven Multilingual v2", canDoTextToSpeech: true, servesProVoices: false),
-        TTSModel(id: "eleven_flash_v2_5", name: "Eleven Flash v2.5", canDoTextToSpeech: true, servesProVoices: false)
-    ]
+    init(characterCount: Int, characterLimit: Int, canExtendCharacterLimit: Bool = false) {
+        self.characterCount = characterCount
+        self.characterLimit = characterLimit
+        self.canExtendCharacterLimit = canExtendCharacterLimit
+    }
+
+    var remaining: Int { max(0, characterLimit - characterCount) }
+    var usedFraction: Double {
+        guard characterLimit > 0 else { return 0 }
+        return min(1, Double(characterCount) / Double(characterLimit))
+    }
+}
+
+enum OutputFormat {
+    /// Human-readable label for a provider format ID such as `mp3_44100_128` or `wav`.
+    static func displayName(for format: String) -> String {
+        let parts = format.split(separator: "_").map(String.init)
+        guard let codec = parts.first else { return format }
+
+        var components = [codec.uppercased()]
+        if parts.count > 1, let hertz = Int(parts[1]) {
+            components.append(String(format: "%g kHz", Double(hertz) / 1_000))
+        }
+        if parts.count > 2, let kbps = Int(parts[2]) {
+            components.append("\(kbps) kbps")
+        }
+        return components.joined(separator: " · ")
+    }
 }
 
 struct TTSVoice: Identifiable, Hashable, Codable, Sendable {
@@ -120,10 +144,26 @@ struct SpeechAlignment: Codable, Equatable, Sendable {
     let characterStartTimesSeconds: [TimeInterval]
     let characterEndTimesSeconds: [TimeInterval]
 
+    /// Matching lengths alone are not enough to build a subtitle from: a cue needs
+    /// finite, forward-moving timestamps. Anything else is rejected here so callers
+    /// fall back to an estimated timeline instead of emitting a broken SRT.
     var isValid: Bool {
-        characters.isEmpty == false
-            && characters.count == characterStartTimesSeconds.count
-            && characters.count == characterEndTimesSeconds.count
+        guard characters.isEmpty == false,
+              characters.count == characterStartTimesSeconds.count,
+              characters.count == characterEndTimesSeconds.count else {
+            return false
+        }
+
+        var previousStart = -Double.greatestFiniteMagnitude
+        for index in characters.indices {
+            let start = characterStartTimesSeconds[index]
+            let end = characterEndTimesSeconds[index]
+            guard start.isFinite, end.isFinite, start >= 0, end >= start, start >= previousStart else {
+                return false
+            }
+            previousStart = start
+        }
+        return true
     }
 
     enum CodingKeys: String, CodingKey {
@@ -138,6 +178,7 @@ enum TTSProviderError: LocalizedError, Sendable {
     case missingVoice
     case invalidText
     case textTooLong(count: Int, limit: Int)
+    case insufficientCredits(required: Int, remaining: Int)
     case invalidResponse
     case requestChanged
     /// `code` is the service's machine-readable identifier (e.g. `voice_not_found`),
@@ -147,13 +188,15 @@ enum TTSProviderError: LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "Please configure your ElevenLabs API key first."
+            return "Please add the speech service's API key in Settings first."
         case .missingVoice:
             return "Please choose a reader voice."
         case .invalidText:
             return "Please enter text to read."
         case let .textTooLong(count, limit):
             return "The text is \(count) characters, which is over the \(limit)-character limit. Please shorten it."
+        case let .insufficientCredits(required, remaining):
+            return "Not enough credits: this text is estimated to need \(required), but only \(remaining) remain. Shorten the text or add credits."
         case .invalidResponse:
             return "The speech service returned an invalid response."
         case .requestChanged:

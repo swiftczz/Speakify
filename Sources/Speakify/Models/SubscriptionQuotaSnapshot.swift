@@ -17,7 +17,7 @@ package final class SubscriptionQuotaSnapshot {
         self.updatedAt = updatedAt
     }
 
-    var subscription: ElevenLabsSubscription {
-        ElevenLabsSubscription(characterCount: characterCount, characterLimit: characterLimit)
+    var quota: TTSQuota {
+        TTSQuota(characterCount: characterCount, characterLimit: characterLimit)
     }
 }

@@ -1,29 +1,34 @@
 import Combine
 import Foundation
 
-final class AppSettings: ObservableObject {
-    @Published var apiKey: String {
-        didSet { persistAPIKey() }
+package final class AppSettings: ObservableObject {
+    static let defaultDraftText = "The best way to improve listening is to hear natural English every day."
+
+    /// The active speech service. The provider-scoped values below (API key,
+    /// model, output format) swap alongside it, so each service keeps its own
+    /// setup and switching back restores exactly what was configured before.
+    @Published var providerID: String {
+        didSet {
+            defaults.set(providerID, forKey: Keys.providerID)
+            guard oldValue != providerID else { return }
+            loadProviderScopedValues()
+        }
     }
 
-    /// Non-nil when the key could not reach the keychain, so the UI can say so
-    /// instead of letting the user believe it was stored.
-    @Published private(set) var keychainErrorMessage: String?
-
-    @Published var downloadDirectoryPath: String {
-        didSet { defaults.set(downloadDirectoryPath, forKey: Keys.downloadDirectoryPath) }
+    @Published var apiKey: String {
+        didSet { defaults.set(apiKey, forKey: Keys.scoped(Keys.apiKey, providerID)) }
     }
 
     @Published var modelID: String {
-        didSet { defaults.set(modelID, forKey: Keys.modelID) }
+        didSet { defaults.set(modelID, forKey: Keys.scoped(Keys.modelID, providerID)) }
     }
 
     @Published var outputFormat: String {
-        didSet { defaults.set(outputFormat, forKey: Keys.outputFormat) }
+        didSet { defaults.set(outputFormat, forKey: Keys.scoped(Keys.outputFormat, providerID)) }
     }
 
-    @Published var providerID: String {
-        didSet { defaults.set(providerID, forKey: Keys.providerID) }
+    @Published var downloadDirectoryPath: String {
+        didSet { defaults.set(downloadDirectoryPath, forKey: Keys.downloadDirectoryPath) }
     }
 
     @Published var languageCode: String {
@@ -41,41 +46,122 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    @Published var draftText: String {
+        didSet { defaults.set(draftText, forKey: Keys.draftText) }
+    }
+
     private let defaults: UserDefaults
 
-    init(defaults: UserDefaults = .standard) {
+    package init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        apiKey = KeychainStore.readAPIKey()
+        Self.migrateLegacyProviderValues(in: defaults)
+        Self.migrateMiMoDefaultOutputFormat(in: defaults)
+
+        let storedProviderID = defaults.string(forKey: Keys.providerID) ?? ""
+        let providerID = TTSProviderRegistry.isKnown(storedProviderID)
+            ? storedProviderID
+            : TTSProviderRegistry.providers[0].id
+        self.providerID = providerID
+
+        let capabilities = TTSProviderRegistry.provider(withID: providerID).capabilities
+        apiKey = defaults.string(forKey: Keys.scoped(Keys.apiKey, providerID)) ?? ""
+        modelID = defaults.string(forKey: Keys.scoped(Keys.modelID, providerID))
+            ?? capabilities.defaultModelID
+        outputFormat = Self.validatedOutputFormat(
+            defaults.string(forKey: Keys.scoped(Keys.outputFormat, providerID)),
+            for: capabilities
+        )
+
         downloadDirectoryPath = defaults.string(forKey: Keys.downloadDirectoryPath)
             ?? FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first?.path()
             ?? NSHomeDirectory()
-        modelID = defaults.string(forKey: Keys.modelID) ?? "eleven_v3"
-        outputFormat = defaults.string(forKey: Keys.outputFormat) ?? "mp3_44100_128"
-        providerID = defaults.string(forKey: Keys.providerID) ?? "elevenlabs"
         languageCode = defaults.string(forKey: Keys.languageCode) ?? SpeechLanguage.autoDetect
         playbackRate = Self.normalizedPlaybackRate(defaults.object(forKey: Keys.playbackRate) as? Double ?? 1.0)
+        draftText = defaults.string(forKey: Keys.draftText) ?? Self.defaultDraftText
     }
 
     var downloadDirectoryURL: URL {
         URL(filePath: downloadDirectoryPath, directoryHint: .isDirectory)
     }
 
-    private func persistAPIKey() {
-        do {
-            try KeychainStore.saveAPIKey(apiKey)
-            keychainErrorMessage = nil
-        } catch {
-            keychainErrorMessage = error.localizedDescription
+    /// Reads any provider's stored key, active or not, so Settings can edit all
+    /// of them side by side.
+    func apiKey(for providerID: String) -> String {
+        guard providerID != self.providerID else { return apiKey }
+        return defaults.string(forKey: Keys.scoped(Keys.apiKey, providerID)) ?? ""
+    }
+
+    func setAPIKey(_ key: String, for providerID: String) {
+        if providerID == self.providerID {
+            apiKey = key
+        } else {
+            objectWillChange.send()
+            defaults.set(key, forKey: Keys.scoped(Keys.apiKey, providerID))
         }
     }
 
+    private func loadProviderScopedValues() {
+        let capabilities = TTSProviderRegistry.provider(withID: providerID).capabilities
+        apiKey = defaults.string(forKey: Keys.scoped(Keys.apiKey, providerID)) ?? ""
+        modelID = defaults.string(forKey: Keys.scoped(Keys.modelID, providerID))
+            ?? capabilities.defaultModelID
+        outputFormat = Self.validatedOutputFormat(
+            defaults.string(forKey: Keys.scoped(Keys.outputFormat, providerID)),
+            for: capabilities
+        )
+    }
+
+    /// Early versions stored a single flat API key/model/format for the only
+    /// provider (ElevenLabs); move those into the provider-scoped slots once.
+    private static func migrateLegacyProviderValues(in defaults: UserDefaults) {
+        for key in [Keys.apiKey, Keys.modelID, Keys.outputFormat] {
+            let scopedKey = Keys.scoped(key, "elevenlabs")
+            if let legacyValue = defaults.string(forKey: key),
+               defaults.string(forKey: scopedKey) == nil {
+                defaults.set(legacyValue, forKey: scopedKey)
+            }
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    /// MiMo originally shipped as WAV-only, so early versions persisted WAV
+    /// even when the user never made an explicit choice. Apply the new MP3
+    /// default once; choosing WAV after this migration remains respected.
+    private static func migrateMiMoDefaultOutputFormat(in defaults: UserDefaults) {
+        guard defaults.bool(forKey: Keys.migratedMiMoMP3Default) == false else { return }
+
+        let formatKey = Keys.scoped(Keys.outputFormat, "mimo")
+        if defaults.string(forKey: formatKey) == nil
+            || defaults.string(forKey: formatKey) == "wav" {
+            defaults.set("mp3", forKey: formatKey)
+        }
+        defaults.set(true, forKey: Keys.migratedMiMoMP3Default)
+    }
+
+    private static func validatedOutputFormat(
+        _ stored: String?,
+        for capabilities: TTSProviderCapabilities
+    ) -> String {
+        guard let stored, capabilities.outputFormats.contains(stored) else {
+            return capabilities.defaultOutputFormat
+        }
+        return stored
+    }
+
     private enum Keys {
+        static let apiKey = "apiKey"
         static let downloadDirectoryPath = "downloadDirectoryPath"
         static let modelID = "modelID"
         static let outputFormat = "outputFormat"
         static let providerID = "providerID"
         static let languageCode = "languageCode"
         static let playbackRate = "playbackRate"
+        static let draftText = "draftText"
+        static let migratedMiMoMP3Default = "migration.mimoDefaultOutputFormat.mp3"
+
+        static func scoped(_ base: String, _ providerID: String) -> String {
+            "\(base).\(providerID)"
+        }
     }
 
     private static func normalizedPlaybackRate(_ value: Double) -> Double {

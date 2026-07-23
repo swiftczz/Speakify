@@ -5,19 +5,30 @@ import SwiftData
 
 @MainActor
 final class SpeechViewModel: ObservableObject {
+    enum StatusTone: Equatable {
+        case info
+        case success
+        case error
+    }
+
     struct DownloadFeedback: Identifiable, Equatable {
         let id = UUID()
         let audioURL: URL
-        let subtitleURL: URL
+        /// `nil` when the provider does not produce alignment for subtitles.
+        let subtitleURL: URL?
 
         var fileName: String { audioURL.lastPathComponent }
     }
 
-    @Published var text: String = "The best way to improve listening is to hear natural English every day." {
-        didSet { invalidateSpeechCache() }
+    @Published var text: String {
+        didSet {
+            scheduleDraftSave()
+            invalidateSpeechCache()
+        }
     }
-    @Published var models: [TTSModel] = TTSModel.fallbackModels
+    @Published var models: [TTSModel] = []
     @Published var voices: [TTSVoice] = []
+    @Published private(set) var publicVoiceIDs = Set<String>()
     @Published var selectedVoice: TTSVoice? {
         didSet { invalidateSpeechCache() }
     }
@@ -29,45 +40,94 @@ final class SpeechViewModel: ObservableObject {
     @Published var isPlaying = false
     @Published var playbackCurrentTime: TimeInterval = 0
     @Published var playbackDuration: TimeInterval = 0
-    @Published var statusMessage = "Configure your API key, load voices, then press play."
-    @Published var lastSavedFile: URL?
+    @Published private(set) var statusMessage = "Configure your API key, load voices, then press play."
+    @Published private(set) var statusTone: StatusTone = .info
     @Published var downloadFeedback: DownloadFeedback?
-    @Published var subscription: ElevenLabsSubscription?
-    @Published var subscriptionStatusMessage: String?
+    @Published var quota: TTSQuota?
+    @Published var quotaStatusMessage: String?
 
     let settings: AppSettings
-    private let provider: any TTSProvider
+    private let providers: [any TTSProvider]
     private let audioPlayer: AudioPlaybackService
     private var allVoices: [TTSVoice] = []
     private var lastSpeech: GeneratedSpeech?
-    private var subscriptionRefreshTask: Task<Void, Never>?
+    private var quotaRefreshTask: Task<Void, Never>?
     private var synthesisTask: Task<GeneratedSpeech, Error>?
+    private var catalogTask: Task<Void, Never>?
+    private var draftSaveTask: Task<Void, Never>?
     /// Bumped whenever a synthesis starts or is cancelled, so a superseded run
     /// never clears state that belongs to the run that replaced it.
     private var generationToken = 0
+    /// Provider + key of the last catalog load, so the debounced API key
+    /// observer skips the reload a provider switch has already performed.
+    private var lastCatalogSignature: String?
     private var settingsCancellables = Set<AnyCancellable>()
-    private let audioCacheRetention: TimeInterval = 10 * 24 * 60 * 60
-    /// Roughly 8 hours of mp3_44100_128 audio; past this the oldest speech is dropped.
-    private let audioCacheSizeLimit = 500 * 1_024 * 1_024
+    private let cacheStore: SpeechCacheStore
     private let apiKeyDebounceInterval: DispatchQueue.SchedulerTimeType.Stride = .seconds(0.8)
+    /// Long enough that a burst of typing writes once, short enough that the draft
+    /// survives a crash moments after the user stops.
+    private let draftSaveDelay: Duration = .milliseconds(400)
+
+    private static let audioCacheRetention: TimeInterval = 10 * 24 * 60 * 60
+    /// Roughly 8 hours of mp3_44100_128 audio; past this the oldest speech is dropped.
+    private static let audioCacheSizeLimit = 500 * 1_024 * 1_024
 
     init(
         settings: AppSettings,
-        provider: TTSProvider = ElevenLabsProvider(),
-        audioPlayer: AudioPlaybackService = AudioPlaybackService()
+        providers: [any TTSProvider] = TTSProviderRegistry.providers,
+        audioPlayer: AudioPlaybackService = AudioPlaybackService(),
+        cacheStore: SpeechCacheStore = SpeechCacheStore(
+            retention: SpeechViewModel.audioCacheRetention,
+            sizeLimit: SpeechViewModel.audioCacheSizeLimit
+        )
     ) {
         self.settings = settings
-        self.provider = provider
+        self.text = settings.draftText
+        self.providers = providers
         self.audioPlayer = audioPlayer
+        self.cacheStore = cacheStore
         self.audioPlayer.setPlaybackRate(settings.playbackRate)
-        pruneExpiredAudioCache()
+        models = activeProvider.fallbackModels
+        Task { await cacheStore.prune() }
         observeSettingsChanges()
+    }
+
+    deinit {
+        catalogTask?.cancel()
+        draftSaveTask?.cancel()
+        quotaRefreshTask?.cancel()
+        synthesisTask?.cancel()
+    }
+
+    var activeProvider: any TTSProvider {
+        providers.first { $0.id == settings.providerID } ?? providers[0]
+    }
+
+    var providerOptions: [TTSProviderOption] {
+        providers.map { TTSProviderOption(id: $0.id, name: $0.displayName) }
+    }
+
+    var activeProviderReportsQuota: Bool {
+        activeProvider.capabilities.reportsQuota
+    }
+
+    var downloadIncludesSubtitles: Bool {
+        activeProvider.capabilities.providesSubtitles
+    }
+
+    var publicVoices: [TTSVoice] {
+        voices.filter { publicVoiceIDs.contains($0.id) }
+    }
+
+    var accountVoices: [TTSVoice] {
+        voices.filter { publicVoiceIDs.contains($0.id) == false }
     }
 
     var canGenerate: Bool {
         settings.apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             && trimmedText.isEmpty == false
             && isTextOverLimit == false
+            && creditLimitError == nil
             && selectedVoice != nil
             && isGenerating == false
     }
@@ -80,6 +140,34 @@ final class SpeechViewModel: ObservableObject {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    var visibleStatusMessage: String {
+        creditLimitError?.localizedDescription ?? statusMessage
+    }
+
+    var visibleStatusTone: StatusTone {
+        creditLimitError == nil ? statusTone : .error
+    }
+
+    var estimatedCreditCost: Int {
+        Self.estimatedCreditCost(
+            characterCount: trimmedText.count,
+            modelID: settings.modelID
+        )
+    }
+
+    private var creditLimitError: TTSProviderError? {
+        guard let quota,
+              quota.canExtendCharacterLimit == false,
+              estimatedCreditCost > quota.remaining else {
+            return nil
+        }
+
+        return .insufficientCredits(
+            required: estimatedCreditCost,
+            remaining: quota.remaining
+        )
+    }
+
     var playbackProgress: Double {
         guard playbackDuration > 0 else { return 0 }
         return min(max(playbackCurrentTime / playbackDuration, 0), 1)
@@ -89,40 +177,92 @@ final class SpeechViewModel: ObservableObject {
         "\(Self.formattedTime(playbackCurrentTime)) / \(Self.formattedTime(playbackDuration))"
     }
 
+    /// Replaces any catalog load already running: switching provider or key while a
+    /// slower request is in flight must never let the stale answer land afterwards.
     func loadModelsAndVoices() async {
+        catalogTask?.cancel()
+        let task = Task { @MainActor [weak self] () -> Void in
+            await self?.performCatalogLoad()
+        }
+        catalogTask = task
+        await task.value
+    }
+
+    private func performCatalogLoad() async {
+        let provider = activeProvider
+        let signature = catalogSignature
+        lastCatalogSignature = signature
         isLoadingVoices = true
-        defer { isLoadingVoices = false }
+        defer {
+            if signature == catalogSignature {
+                isLoadingVoices = false
+            }
+        }
 
         do {
-            statusMessage = "Loading ElevenLabs models and voices..."
+            updateStatus("Loading \(provider.displayName) models and voices...", tone: .info)
             let apiKey = settings.apiKey
             async let loadedModels = provider.fetchModels(apiKey: apiKey)
-            async let loadedVoices = provider.fetchVoices(apiKey: apiKey)
+            async let loadedCatalog = provider.fetchVoiceCatalog(apiKey: apiKey)
 
-            let (models, voices) = try await (loadedModels, loadedVoices)
-            self.models = models.isEmpty ? TTSModel.fallbackModels : models
+            let (models, catalog) = try await (loadedModels, loadedCatalog)
+            try Task.checkCancellation()
+            guard signature == catalogSignature else { return }
+
+            self.models = models.isEmpty ? provider.fallbackModels : models
             ensureSelectedModelIsAvailable()
-            allVoices = voices
+            publicVoiceIDs = Set(catalog.publicVoices.map(\.id))
+            allVoices = catalog.voices
             applyVoiceFilterForSelectedModel()
-            await refreshSubscription(apiKey: apiKey)
-            statusMessage = self.voices.isEmpty ? "No compatible voices returned by the account." : "Loaded \(self.voices.count) compatible voices."
+            await refreshQuota(apiKey: apiKey)
+            guard signature == catalogSignature else { return }
+
+            let status = catalogStatus(for: catalog, apiKey: apiKey)
+            updateStatus(status.message, tone: status.tone)
         } catch {
-            subscription = nil
-            subscriptionStatusMessage = nil
-            statusMessage = error.localizedDescription
+            guard Self.isCancellation(error) == false, signature == catalogSignature else { return }
+            quota = nil
+            quotaStatusMessage = nil
+            updateStatus(error.localizedDescription, tone: .error)
         }
+    }
+
+    private func catalogStatus(
+        for catalog: TTSVoiceCatalog,
+        apiKey: String
+    ) -> (message: String, tone: StatusTone) {
+        guard voices.isEmpty == false else {
+            return ("No compatible voices returned by the account.", .error)
+        }
+        if let accountFailure = catalog.accountFailure {
+            return (
+                "Loaded \(voices.count) public voices. Account voices unavailable: \(accountFailure)",
+                .error
+            )
+        }
+        guard apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            return (
+                "Loaded \(voices.count) voices. Add an API key to generate speech.",
+                .info
+            )
+        }
+        if accountVoices.isEmpty == false {
+            return (
+                "Loaded \(publicVoices.count) public and \(accountVoices.count) account voices.",
+                .success
+            )
+        }
+        return ("Loaded \(voices.count) compatible voices.", .success)
     }
 
     func play(modelContext: ModelContext) async {
         guard canGenerate else {
-            statusMessage = validationMessage()
+            updateStatus(validationMessage(), tone: .error)
             return
         }
 
         do {
-            let speech = try await currentSpeech(refreshSubscriptionOnCacheHit: true)
-            let expectedDuration = playbackDuration > 0 ? playbackDuration : try audioPlayer.duration(data: speech.audioData)
-            try recordHistory(for: speech, duration: expectedDuration, modelContext: modelContext)
+            let speech = try await currentSpeech(refreshQuotaOnCacheHit: true)
             let duration = try audioPlayer.play(
                 data: speech.audioData,
                 rate: settings.playbackRate,
@@ -131,12 +271,15 @@ final class SpeechViewModel: ObservableObject {
             playbackCurrentTime = 0
             playbackDuration = duration
             isPlaying = true
-            statusMessage = "Playing \(speech.request.voice.displayName)."
+            updateStatus("Playing \(speech.request.voice.displayName).", tone: .success)
+            // Written only once the audio is confirmed playable, so unplayable
+            // output leaves no history entry. A failed write must not stop playback.
+            try? recordHistory(for: speech, duration: duration, modelContext: modelContext)
         } catch {
             isPlaying = false
             guard Self.isCancellation(error) == false else { return }
             removeSelectedVoiceIfUnavailable(error)
-            statusMessage = error.localizedDescription
+            updateStatus(error.localizedDescription, tone: .error)
         }
     }
 
@@ -147,7 +290,7 @@ final class SpeechViewModel: ObservableObject {
         synthesisTask = nil
         generationToken += 1
         isGenerating = false
-        statusMessage = "Generation cancelled."
+        updateStatus("Generation cancelled.", tone: .info)
     }
 
     func refreshPlaybackProgress() {
@@ -168,24 +311,38 @@ final class SpeechViewModel: ObservableObject {
         audioPlayer.stop()
         playbackCurrentTime = 0
         isPlaying = false
-        statusMessage = "Playback stopped."
+        updateStatus("Playback stopped.", tone: .info)
     }
 
     func download(modelContext: ModelContext) async {
         guard canGenerate else {
-            statusMessage = validationMessage()
+            updateStatus(validationMessage(), tone: .error)
             return
         }
 
         do {
+            let includesSubtitles = downloadIncludesSubtitles
             let speech = try await currentSpeech(
-                refreshSubscriptionOnCacheHit: true,
-                requireAlignment: true
+                refreshQuotaOnCacheHit: true,
+                requireAlignment: includesSubtitles
+                    && activeProvider.capabilities.providesCharacterAlignment
             )
-            guard let alignment = speech.alignment else {
-                throw TTSProviderError.invalidResponse
+            let subtitle: String?
+            if includesSubtitles {
+                if let alignment = speech.alignment, alignment.isValid {
+                    subtitle = try SubtitleFormatter.srt(from: alignment)
+                } else {
+                    let duration = playbackDuration > 0
+                        ? playbackDuration
+                        : try audioPlayer.duration(data: speech.audioData)
+                    subtitle = try SubtitleFormatter.estimatedSRT(
+                        text: speech.request.text,
+                        duration: duration
+                    )
+                }
+            } else {
+                subtitle = nil
             }
-            let subtitle = try SubtitleFormatter.srt(from: alignment)
             let directory = settings.downloadDirectoryURL
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let fileName = FileNameFormatter.speechFileName(
@@ -196,58 +353,70 @@ final class SpeechViewModel: ObservableObject {
             let destination = FileNameFormatter.availableURL(
                 in: directory,
                 fileName: fileName,
-                companionExtension: "srt"
+                companionExtension: subtitle == nil ? nil : "srt"
             )
-            let subtitleDestination = destination.deletingPathExtension().appendingPathExtension("srt")
+            let subtitleDestination = subtitle == nil
+                ? nil
+                : destination.deletingPathExtension().appendingPathExtension("srt")
             do {
                 try speech.audioData.write(to: destination, options: .atomic)
-                try subtitle.write(to: subtitleDestination, atomically: true, encoding: .utf8)
+                if let subtitle, let subtitleDestination {
+                    try subtitle.write(to: subtitleDestination, atomically: true, encoding: .utf8)
+                }
             } catch {
                 try? FileManager.default.removeItem(at: destination)
-                try? FileManager.default.removeItem(at: subtitleDestination)
+                if let subtitleDestination {
+                    try? FileManager.default.removeItem(at: subtitleDestination)
+                }
                 throw error
             }
-            lastSavedFile = destination
             downloadFeedback = DownloadFeedback(audioURL: destination, subtitleURL: subtitleDestination)
             try recordHistory(for: speech, duration: playbackDuration > 0 ? playbackDuration : nil, modelContext: modelContext)
-            statusMessage = "Saved \(fileName) and \(subtitleDestination.lastPathComponent)."
+            if let subtitleDestination {
+                updateStatus(
+                    "Saved \(fileName) and \(subtitleDestination.lastPathComponent).",
+                    tone: .success
+                )
+            } else {
+                updateStatus("Saved \(fileName).", tone: .success)
+            }
         } catch {
             guard Self.isCancellation(error) == false else { return }
             removeSelectedVoiceIfUnavailable(error)
-            statusMessage = error.localizedDescription
+            updateStatus(error.localizedDescription, tone: .error)
         }
     }
 
     private func currentSpeech(
-        refreshSubscriptionOnCacheHit: Bool = false,
+        refreshQuotaOnCacheHit: Bool = false,
         requireAlignment: Bool = false
     ) async throws -> GeneratedSpeech {
         let request = try makeRequest()
         if let lastSpeech,
            lastSpeech.request == request,
            requireAlignment == false || lastSpeech.alignment?.isValid == true {
-            if refreshSubscriptionOnCacheHit {
-                await refreshSubscription(apiKey: settings.apiKey)
+            if refreshQuotaOnCacheHit {
+                await refreshQuota(apiKey: settings.apiKey)
             }
             return lastSpeech
         }
 
-        if let cachedSpeech = loadCachedSpeech(for: request),
+        if let cachedSpeech = await cacheStore.speech(for: request, key: Self.audioCacheKey(for: request)),
            requireAlignment == false || cachedSpeech.alignment?.isValid == true {
-            if refreshSubscriptionOnCacheHit {
-                await refreshSubscription(apiKey: settings.apiKey)
+            if refreshQuotaOnCacheHit {
+                await refreshQuota(apiKey: settings.apiKey)
             }
             playbackDuration = try audioPlayer.duration(data: cachedSpeech.audioData)
             playbackCurrentTime = 0
             lastSpeech = cachedSpeech
-            statusMessage = "Loaded cached speech."
+            updateStatus("Loaded cached speech.", tone: .success)
             return cachedSpeech
         }
 
         lastSpeech = nil
         resetPlaybackForNewSpeech()
 
-        let provider = self.provider
+        let provider = activeProvider
         let apiKey = settings.apiKey
         let task = Task { try await provider.synthesize(request: request, apiKey: apiKey) }
 
@@ -255,7 +424,7 @@ final class SpeechViewModel: ObservableObject {
         let token = generationToken
         synthesisTask = task
         isGenerating = true
-        statusMessage = "Generating speech..."
+        updateStatus("Generating speech...", tone: .info)
         defer {
             if generationToken == token {
                 synthesisTask = nil
@@ -270,11 +439,12 @@ final class SpeechViewModel: ObservableObject {
         guard request == (try? makeRequest()) else {
             throw TTSProviderError.requestChanged
         }
-        scheduleSubscriptionRefreshAfterGeneration(apiKey: settings.apiKey)
+        scheduleQuotaRefreshAfterGeneration(apiKey: settings.apiKey)
         playbackDuration = try audioPlayer.duration(data: generated.audioData)
         playbackCurrentTime = 0
         lastSpeech = generated
-        saveCachedSpeech(generated)
+        let cacheKey = Self.audioCacheKey(for: generated.request)
+        Task { [cacheStore] in await cacheStore.store(generated, key: cacheKey) }
         return generated
     }
 
@@ -313,6 +483,9 @@ final class SpeechViewModel: ObservableObject {
                 limit: TTSLimits.maxCharacterCount
             ).localizedDescription
         }
+        if let creditLimitError {
+            return creditLimitError.localizedDescription
+        }
         if selectedVoice == nil {
             return TTSProviderError.missingVoice.localizedDescription
         }
@@ -347,123 +520,61 @@ final class SpeechViewModel: ObservableObject {
         resetPlaybackForNewSpeech()
     }
 
-    private func loadCachedSpeech(for request: SpeechRequest) -> GeneratedSpeech? {
-        guard let cacheURL = cachedSpeechFileURL(for: request) else { return nil }
-        guard FileManager.default.fileExists(atPath: cacheURL.path()) else { return nil }
-
-        if isExpiredCacheFile(at: cacheURL) {
-            try? FileManager.default.removeItem(at: cacheURL)
-            return nil
-        }
-
-        guard let audioData = try? Data(contentsOf: cacheURL), audioData.isEmpty == false else {
-            return nil
-        }
-
-        return GeneratedSpeech(
-            audioData: audioData,
-            fileExtension: Self.fileExtension(for: request.outputFormat),
-            request: request,
-            alignment: loadCachedAlignment(for: request)
-        )
+    /// Writes a debounced draft immediately, for the moments where waiting out the
+    /// delay would lose it — the window closing, or the app going away.
+    func flushPendingDraft() {
+        guard draftSaveTask != nil else { return }
+        draftSaveTask?.cancel()
+        draftSaveTask = nil
+        settings.draftText = text
     }
 
-    private func saveCachedSpeech(_ speech: GeneratedSpeech) {
-        guard let cacheURL = cachedSpeechFileURL(for: speech.request) else { return }
-        do {
-            try speech.audioData.write(to: cacheURL, options: .atomic)
-            if let alignment = speech.alignment,
-               let alignmentURL = cachedAlignmentFileURL(for: speech.request) {
-                let data = try JSONEncoder().encode(alignment)
-                try data.write(to: alignmentURL, options: .atomic)
-            }
-            pruneExpiredAudioCache()
-        } catch {
-            // Ignore cache write failures; generation itself already succeeded.
+    /// Coalesces keystrokes into one write instead of hitting user defaults per character.
+    private func scheduleDraftSave() {
+        draftSaveTask?.cancel()
+        let draft = text
+        draftSaveTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: self?.draftSaveDelay ?? .milliseconds(400))
+            guard Task.isCancelled == false else { return }
+            self?.settings.draftText = draft
         }
     }
 
-    private func cachedSpeechFileURL(for request: SpeechRequest) -> URL? {
-        guard let directoryURL = audioCacheDirectoryURL() else { return nil }
-        let cacheKey = Self.audioCacheKey(for: request)
-        return directoryURL.appending(path: "\(cacheKey).\(Self.fileExtension(for: request.outputFormat))")
-    }
-
-    private func cachedAlignmentFileURL(for request: SpeechRequest) -> URL? {
-        guard let directoryURL = audioCacheDirectoryURL() else { return nil }
-        return directoryURL.appending(path: "\(Self.audioCacheKey(for: request)).alignment.json")
-    }
-
-    private func loadCachedAlignment(for request: SpeechRequest) -> SpeechAlignment? {
-        guard let url = cachedAlignmentFileURL(for: request),
-              let data = try? Data(contentsOf: url),
-              let alignment = try? JSONDecoder().decode(SpeechAlignment.self, from: data),
-              alignment.isValid else {
-            return nil
-        }
-        return alignment
-    }
-
-    private func audioCacheDirectoryURL() -> URL? {
-        AppDataLocation.audioCacheDirectoryURL()
-    }
-
-    private func pruneExpiredAudioCache() {
-        guard let directoryURL = audioCacheDirectoryURL() else { return }
-        guard let cachedFiles = try? FileManager.default.contentsOfDirectory(
-            at: directoryURL,
-            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else { return }
-
-        let evicted = AudioCachePruner.entriesToEvict(
-            from: AudioCachePruner.entries(from: cachedFiles),
-            now: .now,
-            retention: audioCacheRetention,
-            sizeLimit: audioCacheSizeLimit
-        )
-
-        for entry in evicted {
-            entry.urls.forEach { try? FileManager.default.removeItem(at: $0) }
-        }
-    }
-
-    private func isExpiredCacheFile(at fileURL: URL) -> Bool {
-        guard let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]),
-              let modifiedAt = values.contentModificationDate else {
-            return false
+    private func refreshQuota(apiKey: String? = nil) async {
+        let provider = activeProvider
+        guard provider.capabilities.reportsQuota else {
+            quota = nil
+            quotaStatusMessage = nil
+            return
         }
 
-        return Date().timeIntervalSince(modifiedAt) > audioCacheRetention
-    }
-
-    private func refreshSubscription(apiKey: String? = nil) async {
         let resolvedAPIKey = (apiKey ?? settings.apiKey).trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard resolvedAPIKey.isEmpty == false else {
-            subscription = nil
-            subscriptionStatusMessage = nil
+            quota = nil
+            quotaStatusMessage = nil
             return
         }
 
         do {
-            subscription = try await provider.fetchSubscription(apiKey: resolvedAPIKey)
-            subscriptionStatusMessage = nil
+            quota = try await provider.fetchQuota(apiKey: resolvedAPIKey)
+            quotaStatusMessage = nil
         } catch {
-            subscription = nil
-            subscriptionStatusMessage = error.localizedDescription
+            quota = nil
+            quotaStatusMessage = error.localizedDescription
         }
     }
 
-    private func scheduleSubscriptionRefreshAfterGeneration(apiKey: String) {
-        subscriptionRefreshTask?.cancel()
+    private func scheduleQuotaRefreshAfterGeneration(apiKey: String) {
+        quotaRefreshTask?.cancel()
+        guard activeProvider.capabilities.reportsQuota else { return }
         let resolvedAPIKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard resolvedAPIKey.isEmpty == false else { return }
 
-        subscriptionRefreshTask = Task { @MainActor [weak self] in
+        quotaRefreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
 
-            // ElevenLabs usage updates can lag slightly behind synthesis completion.
+            // Usage updates can lag slightly behind synthesis completion.
             // Poll a few times so the sidebar tracks the server once the new usage lands.
             let delays: [Duration] = [.zero, .seconds(5), .seconds(10), .seconds(15), .seconds(20), .seconds(25)]
 
@@ -472,35 +583,71 @@ final class SpeechViewModel: ObservableObject {
                     try? await Task.sleep(for: delay)
                 }
                 guard Task.isCancelled == false else { return }
-                await self.refreshSubscription(apiKey: resolvedAPIKey)
+                await self.refreshQuota(apiKey: resolvedAPIKey)
             }
         }
     }
 
+    /// Identifies the credentials a catalog load was made with, so provider and
+    /// API key observers never trigger duplicate loads for the same state.
+    private var catalogSignature: String {
+        "\(settings.providerID)\u{1F}\(settings.apiKey)"
+    }
+
+    private func reloadCatalogForCredentialChange() async {
+        invalidateSpeechCache()
+        clearAccountScopedState()
+        await loadModelsAndVoices()
+    }
+
+    /// Drops everything tied to the previous credentials before a reload, so a reload
+    /// that fails can never leave the old account's voices or balance on screen.
+    private func clearAccountScopedState() {
+        quotaRefreshTask?.cancel()
+        let accountVoiceIDs = Set(accountVoices.map(\.id))
+        allVoices.removeAll { accountVoiceIDs.contains($0.id) }
+        voices.removeAll { accountVoiceIDs.contains($0.id) }
+        if let selectedVoice, accountVoiceIDs.contains(selectedVoice.id) {
+            self.selectedVoice = voices.first
+        }
+        quota = nil
+        quotaStatusMessage = nil
+    }
+
+    private func handleProviderSwitch() async {
+        quotaRefreshTask?.cancel()
+        allVoices = []
+        voices = []
+        publicVoiceIDs = []
+        selectedVoice = nil
+        quota = nil
+        quotaStatusMessage = nil
+        models = activeProvider.fallbackModels
+        ensureSelectedModelIsAvailable()
+        await reloadCatalogForCredentialChange()
+    }
+
     private func observeSettingsChanges() {
+        settings.$providerID
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                Task { @MainActor in await self?.handleProviderSwitch() }
+            }
+            .store(in: &settingsCancellables)
+
         // The key field publishes on every keystroke; without debouncing, typing or
-        // pasting a key fires a full model/voice/subscription reload per character.
+        // pasting a key fires a full model/voice/quota reload per character.
         settings.$apiKey
             .dropFirst()
             .removeDuplicates()
             .debounce(for: apiKeyDebounceInterval, scheduler: DispatchQueue.main)
-            .sink { [weak self] apiKey in
+            .sink { [weak self] _ in
                 Task { @MainActor in
                     guard let self else { return }
-                    self.invalidateSpeechCache()
-
-                    if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        self.subscriptionRefreshTask?.cancel()
-                        self.allVoices = []
-                        self.voices = []
-                        self.selectedVoice = nil
-                        self.subscription = nil
-                        self.subscriptionStatusMessage = nil
-                        self.statusMessage = TTSProviderError.missingAPIKey.localizedDescription
-                        return
-                    }
-
-                    await self.loadModelsAndVoices()
+                    // A provider switch already reloaded with this exact state.
+                    guard self.lastCatalogSignature != self.catalogSignature else { return }
+                    await self.reloadCatalogForCredentialChange()
                 }
             }
             .store(in: &settingsCancellables)
@@ -516,13 +663,6 @@ final class SpeechViewModel: ObservableObject {
             .store(in: &settingsCancellables)
 
         settings.$outputFormat
-            .dropFirst()
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.invalidateSpeechCache() }
-            }
-            .store(in: &settingsCancellables)
-
-        settings.$providerID
             .dropFirst()
             .sink { [weak self] _ in
                 Task { @MainActor in self?.invalidateSpeechCache() }
@@ -549,12 +689,23 @@ final class SpeechViewModel: ObservableObject {
     private func finishPlayback() {
         playbackCurrentTime = playbackDuration
         isPlaying = false
-        statusMessage = "Playback finished."
+        updateStatus("Playback finished.", tone: .success)
+    }
+
+    private func updateStatus(_ message: String, tone: StatusTone) {
+        statusMessage = message
+        statusTone = tone
+    }
+
+    nonisolated static func estimatedCreditCost(characterCount: Int, modelID: String) -> Int {
+        let normalizedCount = max(characterCount, 0)
+        let multiplier = modelID == "eleven_flash_v2_5" ? 0.5 : 1.0
+        return Int(ceil(Double(normalizedCount) * multiplier))
     }
 
     private func ensureSelectedModelIsAvailable() {
         if models.contains(where: { $0.id == settings.modelID }) == false {
-            settings.modelID = models.first?.id ?? "eleven_v3"
+            settings.modelID = models.first?.id ?? activeProvider.capabilities.defaultModelID
         }
     }
 
@@ -575,6 +726,7 @@ final class SpeechViewModel: ObservableObject {
         guard let selectedVoice, Self.isUnavailableVoiceError(error) else { return }
         allVoices.removeAll { $0.id == selectedVoice.id }
         voices.removeAll { $0.id == selectedVoice.id }
+        publicVoiceIDs.remove(selectedVoice.id)
         self.selectedVoice = voices.first
     }
 
@@ -651,9 +803,5 @@ final class SpeechViewModel: ObservableObject {
         let source = historyRequestKey(for: request)
         let digest = SHA256.hash(data: Data(source.utf8))
         return digest.compactMap { String(format: "%02x", $0) }.joined()
-    }
-
-    private static func fileExtension(for outputFormat: String) -> String {
-        outputFormat.hasPrefix("wav") ? "wav" : "mp3"
     }
 }
