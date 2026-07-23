@@ -19,6 +19,19 @@ package struct SettingsView: View {
     package var body: some View {
         Form {
             Section {
+                Picker("App Language", selection: $settings.appLanguage) {
+                    ForEach(AppLanguage.allCases) { language in
+                        Text(LocalizedStringKey(language.titleKey))
+                            .tag(language)
+                    }
+                }
+            } header: {
+                Text("General")
+            } footer: {
+                Text("Language changes apply immediately.")
+            }
+
+            Section {
                 Picker("Service", selection: $settings.providerID) {
                     ForEach(TTSProviderRegistry.options) { option in
                         Text(option.name).tag(option.id)
@@ -34,7 +47,8 @@ package struct SettingsView: View {
                 if activeCapabilities.acceptsLanguageHint {
                     Picker("Language", selection: $settings.languageCode) {
                         ForEach(SpeechLanguage.supportedCodes, id: \.self) { code in
-                            Text(SpeechLanguage.displayName(for: code)).tag(code)
+                            Text(SpeechLanguage.displayName(for: code, locale: settings.appLocale))
+                                .tag(code)
                         }
                     }
                 }
@@ -43,6 +57,8 @@ package struct SettingsView: View {
             } footer: {
                 if activeCapabilities.providesSubtitles == false {
                     Text("This service downloads audio only. Choose ElevenLabs when you also need SRT subtitles.")
+                } else if activeCapabilities.providesCharacterAlignment == false {
+                    Text("This service includes an estimated SRT based on the measured audio duration.")
                 }
             }
 
@@ -56,7 +72,7 @@ package struct SettingsView: View {
                 Text("API Key")
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(activeCapabilities.apiKeyHint)
+                    Text(LocalizedStringKey(activeCapabilities.apiKeyHint))
                     Text("Stored in Speakify’s local settings for \(activeProviderName).")
                 }
                 .foregroundStyle(.secondary)
@@ -89,9 +105,9 @@ package struct SettingsView: View {
             minWidth: 560,
             idealWidth: 620,
             maxWidth: 760,
-            minHeight: 500,
-            idealHeight: 540,
-            maxHeight: 700
+            minHeight: 560,
+            idealHeight: 600,
+            maxHeight: 760
         )
     }
 
@@ -150,8 +166,12 @@ private struct APIKeyField: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .contentShape(Rectangle())
-            .help(isRevealed ? "Hide API key" : "Show API key")
-            .accessibilityLabel(isRevealed ? "Hide API key" : "Show API key")
+            .help(
+                isRevealed
+                    ? L10n.string("Hide API key", defaultValue: "Hide API key")
+                    : L10n.string("Show API key", defaultValue: "Show API key")
+            )
+            .accessibilityLabel(Text(isRevealed ? "Hide API key" : "Show API key"))
         }
     }
 }

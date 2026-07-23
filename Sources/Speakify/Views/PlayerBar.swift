@@ -6,6 +6,7 @@ struct PlayerBar: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject var settings: AppSettings
     @ObservedObject var viewModel: SpeechViewModel
+    @ObservedObject var playback: PlaybackStore
     @State private var isAnimatingPlayButton = false
     @State private var isAnimatingDownloadButton = false
     @State private var isHoveringDownloadButton = false
@@ -18,18 +19,26 @@ struct PlayerBar: View {
         if viewModel.isGenerating {
             return "stop.circle.fill"
         }
-        return viewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill"
+        return playback.isPlaying ? "pause.circle.fill" : "play.circle.fill"
+    }
+
+    private var downloadContentsLabel: LocalizedStringKey {
+        let capabilities = viewModel.activeProvider.capabilities
+        guard capabilities.providesSubtitles else { return "Audio" }
+        return capabilities.providesCharacterAlignment
+            ? "Audio + SRT subtitle"
+            : "Audio + estimated SRT subtitle"
     }
 
     var body: some View {
         HStack(spacing: 16) {
             AudioStatusView(
-                isActive: viewModel.isPlaying || viewModel.isGenerating,
-                progress: viewModel.playbackProgress
+                isActive: playback.isPlaying || viewModel.isGenerating,
+                progress: playback.progress
             )
                 .frame(height: 38)
 
-            Text(viewModel.isGenerating ? "Generating" : viewModel.playbackTimeText)
+            Text(viewModel.isGenerating ? "Generating" : playback.timeText)
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(AppPalette.ink)
                 .monospacedDigit()
@@ -52,8 +61,8 @@ struct PlayerBar: View {
         }
         // Polls only while audio is actually playing; an always-on timer woke the
         // whole window ten times a second even when nothing was happening.
-        .task(id: viewModel.isPlaying) {
-            while viewModel.isPlaying, Task.isCancelled == false {
+        .task(id: playback.isPlaying) {
+            while playback.isPlaying, Task.isCancelled == false {
                 try? await Task.sleep(for: .milliseconds(100))
                 guard Task.isCancelled == false else { return }
                 viewModel.refreshPlaybackProgress()
@@ -71,7 +80,7 @@ struct PlayerBar: View {
 
             if viewModel.isGenerating {
                 viewModel.cancelGeneration()
-            } else if viewModel.isPlaying {
+            } else if playback.isPlaying {
                 viewModel.stop()
             } else {
                 Task { await viewModel.play(modelContext: modelContext) }
@@ -88,8 +97,8 @@ struct PlayerBar: View {
         }
         .buttonStyle(.plain)
         .disabled(
-            viewModel.canGenerate == false
-                && viewModel.isPlaying == false
+                viewModel.canGenerate == false
+                && playback.isPlaying == false
                 && viewModel.isGenerating == false
         )
         .help(viewModel.isGenerating ? "Cancel generation" : "Play")
@@ -141,7 +150,7 @@ struct PlayerBar: View {
 
     private var downloadDestinationTooltip: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(viewModel.downloadIncludesSubtitles ? "Audio + SRT subtitle" : "Audio")
+            Text(downloadContentsLabel)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(AppPalette.muted)
 

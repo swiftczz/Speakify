@@ -148,11 +148,18 @@ final class MiMoProviderTests: XCTestCase {
     }
 }
 
-/// Hits the real MiMo endpoint when `MIMO_API_KEY` is exported; skipped otherwise.
+/// Hits the real MiMo endpoint only when explicitly opted in. Requiring a second
+/// switch prevents an exported developer key from turning every unit-test run into
+/// a billable, network-dependent integration test.
 final class MiMoProviderLiveTests: XCTestCase {
     @MainActor
     func testLiveSynthesisReturnsPlayableMP3() async throws {
         let apiKey = ProcessInfo.processInfo.environment["MIMO_API_KEY"] ?? ""
+        let runsLiveTests = ProcessInfo.processInfo.environment["RUN_LIVE_TTS_TESTS"] == "1"
+        try XCTSkipUnless(
+            runsLiveTests,
+            "Set RUN_LIVE_TTS_TESTS=1 to enable live provider tests."
+        )
         try XCTSkipIf(apiKey.isEmpty, "MIMO_API_KEY not set; skipping live synthesis test.")
 
         let provider = MiMoProvider()

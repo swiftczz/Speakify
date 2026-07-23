@@ -31,7 +31,7 @@ struct HistoryPanel: View {
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(selectedHistoryIDs.isEmpty ? AppPalette.muted.opacity(0.45) : .black)
+                .foregroundStyle(selectedHistoryIDs.isEmpty ? AppPalette.muted.opacity(0.45) : AppPalette.ink)
                 .disabled(selectedHistoryIDs.isEmpty)
                 .help("Delete selected history")
             }
@@ -125,10 +125,10 @@ struct HistoryPanel: View {
 
     private static func sectionTitle(for day: Date, calendar: Calendar) -> String {
         if calendar.isDateInToday(day) {
-            return "Today"
+            return L10n.string("history.today", defaultValue: "Today")
         }
         if calendar.isDateInYesterday(day) {
-            return "Yesterday"
+            return L10n.string("history.yesterday", defaultValue: "Yesterday")
         }
         return historyDateFormatter.string(from: day)
     }
@@ -206,7 +206,7 @@ private struct HistoryRow: View {
         HStack(spacing: 12) {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                 .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(isSelected ? .black : AppPalette.muted.opacity(0.55))
+                .foregroundStyle(isSelected ? AppPalette.ink : AppPalette.muted.opacity(0.55))
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 7) {

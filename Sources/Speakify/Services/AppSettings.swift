@@ -1,8 +1,44 @@
 import Combine
 import Foundation
 
+package enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
+    case system
+    case simplifiedChinese = "zh-Hans"
+    case english = "en"
+
+    package var id: String { rawValue }
+
+    package var locale: Locale {
+        switch self {
+        case .system:
+            return .autoupdatingCurrent
+        case .simplifiedChinese, .english:
+            return Locale(identifier: rawValue)
+        }
+    }
+
+    var localizationIdentifier: String? {
+        self == .system ? nil : rawValue
+    }
+
+    var titleKey: String {
+        switch self {
+        case .system:
+            return "System Default"
+        case .simplifiedChinese:
+            return "简体中文"
+        case .english:
+            return "English"
+        }
+    }
+}
+
 package final class AppSettings: ObservableObject {
     static let defaultDraftText = "The best way to improve listening is to hear natural English every day."
+
+    @Published package var appLanguage: AppLanguage {
+        didSet { defaults.set(appLanguage.rawValue, forKey: Keys.appLanguage) }
+    }
 
     /// The active speech service. The provider-scoped values below (API key,
     /// model, output format) swap alongside it, so each service keeps its own
@@ -57,6 +93,9 @@ package final class AppSettings: ObservableObject {
         Self.migrateLegacyProviderValues(in: defaults)
         Self.migrateMiMoDefaultOutputFormat(in: defaults)
 
+        appLanguage = AppLanguage(rawValue: defaults.string(forKey: Keys.appLanguage) ?? "")
+            ?? .system
+
         let storedProviderID = defaults.string(forKey: Keys.providerID) ?? ""
         let providerID = TTSProviderRegistry.isKnown(storedProviderID)
             ? storedProviderID
@@ -82,6 +121,10 @@ package final class AppSettings: ObservableObject {
 
     var downloadDirectoryURL: URL {
         URL(filePath: downloadDirectoryPath, directoryHint: .isDirectory)
+    }
+
+    package var appLocale: Locale {
+        appLanguage.locale
     }
 
     /// Reads any provider's stored key, active or not, so Settings can edit all
@@ -149,6 +192,7 @@ package final class AppSettings: ObservableObject {
     }
 
     private enum Keys {
+        static let appLanguage = "appLanguage"
         static let apiKey = "apiKey"
         static let downloadDirectoryPath = "downloadDirectoryPath"
         static let modelID = "modelID"

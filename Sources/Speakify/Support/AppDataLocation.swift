@@ -1,9 +1,11 @@
 import Foundation
+import OSLog
 
 package enum AppDataLocation {
     private static let rootDirectoryName = ".speakify"
     private static let legacyDirectoryName = "com.local.Speakify"
     private static let historyStoreFileName = "History.store"
+    private static let logger = Logger(subsystem: "Speakify", category: "LocalData")
 
     package static func prepare(fileManager: FileManager = .default) {
         let rootURL = rootDirectoryURL(fileManager: fileManager)
@@ -57,7 +59,11 @@ package enum AppDataLocation {
             let source = rootURL.appending(path: "\(historyStoreFileName)\(suffix)")
             guard fileManager.fileExists(atPath: source.path(percentEncoded: false)) else { continue }
             let destination = rootURL.appending(path: "\(quarantineURL.lastPathComponent)\(suffix)")
-            try? fileManager.moveItem(at: source, to: destination)
+            do {
+                try fileManager.moveItem(at: source, to: destination)
+            } catch {
+                logger.error("Could not quarantine a history database file: \(error.localizedDescription, privacy: .public)")
+            }
         }
 
         quarantinedHistoryStoreURL = quarantineURL
@@ -70,6 +76,13 @@ package enum AppDataLocation {
         // checking the encoded string never matched, so the migration never ran.
         guard fileManager.fileExists(atPath: legacyRootURL.path(percentEncoded: false)) else { return }
 
+        migrateLegacyData(from: legacyRootURL, to: rootURL, fileManager: fileManager)
+    }
+
+    /// Kept internal so migration behavior can be tested entirely in a temporary
+    /// directory without touching the user's real Application Support folder.
+    static func migrateLegacyData(from legacyRootURL: URL, to rootURL: URL, fileManager: FileManager = .default) {
+        ensureDirectoryExists(at: rootURL, fileManager: fileManager)
         migrateHistoryStoreIfNeeded(from: legacyRootURL, to: rootURL, fileManager: fileManager)
         migrateAudioCacheIfNeeded(from: legacyRootURL, to: rootURL, fileManager: fileManager)
     }
@@ -115,7 +128,11 @@ package enum AppDataLocation {
         // Reclaim the old directory only once every file is confirmed at its new
         // location; otherwise a failed move would quietly destroy cached audio.
         if everyFileArrived {
-            try? fileManager.removeItem(at: legacyCacheURL)
+            do {
+                try fileManager.removeItem(at: legacyCacheURL)
+            } catch {
+                logger.error("Could not remove the migrated legacy audio cache: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -129,14 +146,24 @@ package enum AppDataLocation {
 
         do {
             try fileManager.moveItem(at: sourceURL, to: destinationURL)
-        } catch {
-            try? fileManager.copyItem(at: sourceURL, to: destinationURL)
+        } catch let moveError {
+            do {
+                try fileManager.copyItem(at: sourceURL, to: destinationURL)
+            } catch {
+                logger.error(
+                    "Local data migration failed after move error \(moveError.localizedDescription, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+            }
         }
         return fileManager.fileExists(atPath: destinationPath)
     }
 
     private static func ensureDirectoryExists(at directoryURL: URL, fileManager: FileManager) {
-        try? fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        do {
+            try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        } catch {
+            logger.error("Could not create a local data directory: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private static func legacyRootDirectoryURL(fileManager: FileManager) -> URL {

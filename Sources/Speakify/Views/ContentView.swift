@@ -9,10 +9,10 @@ package struct ContentView: View {
     @Query(sort: \SubscriptionQuotaSnapshot.updatedAt, order: .reverse) private var subscriptionSnapshots: [SubscriptionQuotaSnapshot]
     @StateObject private var settings: AppSettings
     @StateObject private var viewModel: SpeechViewModel
-    @State private var leftWidth: CGFloat = 258
-    @State private var rightWidth: CGFloat = 310
-    @State private var leftCollapsed = false
-    @State private var rightCollapsed = false
+    @AppStorage("ui.leftSidebarWidth") private var leftWidth = 258.0
+    @AppStorage("ui.rightSidebarWidth") private var rightWidth = 310.0
+    @AppStorage("ui.leftSidebarCollapsed") private var leftCollapsed = false
+    @AppStorage("ui.rightSidebarCollapsed") private var rightCollapsed = false
     @State private var showsHistoryRecoveryNotice = AppDataLocation.quarantinedHistoryStoreURL != nil
 
     package init(settings: AppSettings) {
@@ -21,30 +21,65 @@ package struct ContentView: View {
     }
 
     private var displayedQuota: TTSQuota? {
-        viewModel.quota ?? subscriptionSnapshots.first?.quota
+        if viewModel.quotaScopeIdentifier == activeScopeIdentifier {
+            return viewModel.quota ?? activeQuotaSnapshot?.quota
+        }
+        return activeQuotaSnapshot?.quota
+    }
+
+    private var activeCredentialFingerprint: String {
+        CredentialScope.fingerprint(apiKey: settings.apiKey)
+    }
+
+    private var activeScopeIdentifier: String {
+        CredentialScope.identifier(
+            providerID: settings.providerID,
+            apiKey: settings.apiKey
+        )
+    }
+
+    private var activeQuotaSnapshot: SubscriptionQuotaSnapshot? {
+        subscriptionSnapshots.first {
+            $0.providerID == settings.providerID
+                && $0.credentialFingerprint == activeCredentialFingerprint
+        }
+    }
+
+    private var leftWidthBinding: Binding<CGFloat> {
+        Binding(
+            get: { CGFloat(leftWidth) },
+            set: { leftWidth = Double($0) }
+        )
+    }
+
+    private var rightWidthBinding: Binding<CGFloat> {
+        Binding(
+            get: { CGFloat(rightWidth) },
+            set: { rightWidth = Double($0) }
+        )
     }
 
     package var body: some View {
         HStack(spacing: 0) {
             if !leftCollapsed {
                 SidebarView(
-                    viewModel: viewModel,
+                    reportsQuota: viewModel.activeProviderReportsQuota,
                     displayedQuota: displayedQuota
                 )
-                    .frame(width: leftWidth)
+                    .frame(width: CGFloat(leftWidth))
                     .transition(.move(edge: .leading))
 
-                DragHandle(direction: 1, width: $leftWidth, minWidth: 200, maxWidth: 400)
+                DragHandle(direction: 1, width: leftWidthBinding, minWidth: 200, maxWidth: 400)
             }
 
             MainWorkspace(settings: settings, viewModel: viewModel)
                 .frame(minWidth: 400, maxWidth: .infinity)
 
             if !rightCollapsed {
-                DragHandle(direction: -1, width: $rightWidth, minWidth: 240, maxWidth: 420)
+                DragHandle(direction: -1, width: rightWidthBinding, minWidth: 240, maxWidth: 420)
 
                 HistoryPanel(onApply: { viewModel.text = $0 })
-                    .frame(width: rightWidth)
+                    .frame(width: CGFloat(rightWidth))
                     .transition(.move(edge: .trailing))
             }
         }
@@ -113,12 +148,18 @@ package struct ContentView: View {
     private func persistQuotaSnapshot(_ quota: TTSQuota?) {
         guard let quota else { return }
 
-        let snapshot = subscriptionSnapshots.first ?? SubscriptionQuotaSnapshot(
+        let matchingSnapshots = subscriptionSnapshots.filter {
+            $0.providerID == settings.providerID
+                && $0.credentialFingerprint == activeCredentialFingerprint
+        }
+        let snapshot = matchingSnapshots.first ?? SubscriptionQuotaSnapshot(
+            providerID: settings.providerID,
+            credentialFingerprint: activeCredentialFingerprint,
             characterCount: quota.characterCount,
             characterLimit: quota.characterLimit
         )
 
-        if subscriptionSnapshots.isEmpty {
+        if matchingSnapshots.isEmpty {
             modelContext.insert(snapshot)
         }
 
@@ -126,8 +167,15 @@ package struct ContentView: View {
         snapshot.characterLimit = quota.characterLimit
         snapshot.updatedAt = .now
 
-        for staleSnapshot in subscriptionSnapshots.dropFirst() {
+        for staleSnapshot in matchingSnapshots.dropFirst() {
             modelContext.delete(staleSnapshot)
+        }
+
+        // Unscoped rows belong to the pre-account-isolation schema and must never
+        // reappear for whichever account happens to be active.
+        for legacySnapshot in subscriptionSnapshots
+            where legacySnapshot.providerID.isEmpty || legacySnapshot.credentialFingerprint.isEmpty {
+            modelContext.delete(legacySnapshot)
         }
 
         try? modelContext.save()

@@ -34,14 +34,16 @@ struct SpeakifyApp: App {
             ContentView(settings: settings)
                 .frame(minWidth: 1180, minHeight: 720)
                 .modelContainer(historyModelContainer)
+                .environment(\.locale, settings.appLocale)
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
 
         Settings {
             SettingsView(settings: settings)
+                .environment(\.locale, settings.appLocale)
         }
-        .defaultSize(width: 620, height: 560)
+        .defaultSize(width: 620, height: 620)
         .windowResizability(.contentSize)
     }
 }

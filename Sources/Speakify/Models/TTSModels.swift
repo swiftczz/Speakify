@@ -109,9 +109,11 @@ enum SpeechLanguage {
         "hi", "ar", "nl", "pl", "tr", "sv", "id", "vi", "cs", "uk"
     ]
 
-    static func displayName(for code: String) -> String {
-        guard code.isEmpty == false else { return "Auto detect" }
-        return (Locale.current.localizedString(forLanguageCode: code) ?? code).localizedCapitalized
+    static func displayName(for code: String, locale: Locale = .current) -> String {
+        guard code.isEmpty == false else {
+            return L10n.string("Auto detect", defaultValue: "Auto detect")
+        }
+        return (locale.localizedString(forLanguageCode: code) ?? code).localizedCapitalized
     }
 }
 
@@ -188,21 +190,48 @@ enum TTSProviderError: LocalizedError, Sendable {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "Please add the speech service's API key in Settings first."
+            return L10n.string(
+                "error.missing-api-key",
+                defaultValue: "Please add the speech service's API key in Settings first."
+            )
         case .missingVoice:
-            return "Please choose a reader voice."
+            return L10n.string(
+                "error.missing-voice",
+                defaultValue: "Please choose a reader voice."
+            )
         case .invalidText:
-            return "Please enter text to read."
+            return L10n.string(
+                "error.invalid-text",
+                defaultValue: "Please enter text to read."
+            )
         case let .textTooLong(count, limit):
-            return "The text is \(count) characters, which is over the \(limit)-character limit. Please shorten it."
+            let format = L10n.string(
+                "error.text-too-long",
+                defaultValue: "The text is %1$lld characters, which is over the %2$lld-character limit. Please shorten it."
+            )
+            return String(format: format, Int64(count), Int64(limit))
         case let .insufficientCredits(required, remaining):
-            return "Not enough credits: this text is estimated to need \(required), but only \(remaining) remain. Shorten the text or add credits."
+            let format = L10n.string(
+                "error.insufficient-credits",
+                defaultValue: "Not enough credits: this text is estimated to need %1$lld, but only %2$lld remain. Shorten the text or add credits."
+            )
+            return String(format: format, Int64(required), Int64(remaining))
         case .invalidResponse:
-            return "The speech service returned an invalid response."
+            return L10n.string(
+                "error.invalid-response",
+                defaultValue: "The speech service returned an invalid response."
+            )
         case .requestChanged:
-            return "The speech request changed. Press play again to generate the latest text."
+            return L10n.string(
+                "error.request-changed",
+                defaultValue: "The speech request changed. Press play again to generate the latest text."
+            )
         case let .httpStatus(status, message, _):
-            return "Speech service error \(status): \(message)"
+            let format = L10n.string(
+                "error.http-status",
+                defaultValue: "Speech service error %1$lld: %2$@"
+            )
+            return String(format: format, Int64(status), message)
         }
     }
 }

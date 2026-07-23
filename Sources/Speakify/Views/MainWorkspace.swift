@@ -15,7 +15,11 @@ struct MainWorkspace: View {
             EditorCard(viewModel: viewModel)
                 .frame(minHeight: 320, maxHeight: .infinity)
 
-            PlayerBar(settings: settings, viewModel: viewModel)
+            PlayerBar(
+                settings: settings,
+                viewModel: viewModel,
+                playback: viewModel.playback
+            )
                 .frame(height: 80)
         }
         .padding(.horizontal, 20)

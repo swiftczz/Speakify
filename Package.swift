@@ -4,6 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "Speakify",
+    defaultLocalization: "en",
     platforms: [
         .macOS(.v26)
     ],
@@ -20,7 +21,10 @@ let package = Package(
         .executableTarget(
             name: "SpeakifyApp",
             dependencies: ["Speakify"],
-            path: "Sources/SpeakifyApp"
+            path: "Sources/SpeakifyApp",
+            resources: [
+                .process("Resources")
+            ]
         ),
         .testTarget(
             name: "SpeakifyTests",

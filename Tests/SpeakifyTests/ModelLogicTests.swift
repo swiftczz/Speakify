@@ -3,6 +3,33 @@ import XCTest
 @testable import Speakify
 
 final class ModelLogicTests: XCTestCase {
+    func testAppSettingsPersistsSelectedAppLanguage() {
+        let suiteName = "SpeakifyTests.AppLanguage.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let firstSettings = AppSettings(defaults: defaults)
+        XCTAssertEqual(firstSettings.appLanguage, .system)
+
+        firstSettings.appLanguage = .simplifiedChinese
+        let restoredSettings = AppSettings(defaults: defaults)
+
+        XCTAssertEqual(restoredSettings.appLanguage, .simplifiedChinese)
+        XCTAssertEqual(restoredSettings.appLocale.identifier, "zh-Hans")
+    }
+
+    func testAppSettingsFallsBackToSystemForUnknownAppLanguage() {
+        let suiteName = "SpeakifyTests.UnknownAppLanguage.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("unsupported-language", forKey: "appLanguage")
+
+        let settings = AppSettings(defaults: defaults)
+
+        XCTAssertEqual(settings.appLanguage, .system)
+    }
+
     func testAppSettingsPersistsAPIKeyUnderProviderScope() {
         let suiteName = "SpeakifyTests.APIKey.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
