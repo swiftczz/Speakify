@@ -38,7 +38,7 @@ swift run --scratch-path build Speakify
 ### 2. 打包 `.app`
 
 ```bash
-Scripts/package-app.sh
+script/build_and_run.sh
 open build/release/Speakify.app
 ```
 

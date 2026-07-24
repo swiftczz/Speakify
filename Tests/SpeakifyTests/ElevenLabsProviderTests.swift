@@ -22,6 +22,39 @@ final class ElevenLabsProviderTests: XCTestCase {
         XCTAssertEqual(body["language_code"] as? String, "zh")
     }
 
+    func testElevenV3OmitsUnsupportedSpeedSetting() async throws {
+        let body = try await synthesisRequestBody(
+            languageCode: nil,
+            modelID: "eleven_v3",
+            voiceSettings: VoiceSettings(speed: 1.15)
+        )
+        let settings = try XCTUnwrap(body["voice_settings"] as? [String: Any])
+
+        XCTAssertNil(settings["speed"])
+    }
+
+    func testMultilingualModelSendsAdvancedVoiceSettings() async throws {
+        let expected = VoiceSettings(
+            stability: 0.3,
+            similarityBoost: 0.85,
+            style: 0.4,
+            speed: 1.15,
+            speakerBoost: false
+        )
+        let body = try await synthesisRequestBody(
+            languageCode: "en",
+            modelID: "eleven_multilingual_v2",
+            voiceSettings: expected
+        )
+        let settings = try XCTUnwrap(body["voice_settings"] as? [String: Any])
+
+        XCTAssertEqual(settings["stability"] as? Double, expected.stability)
+        XCTAssertEqual(settings["similarity_boost"] as? Double, expected.similarityBoost)
+        XCTAssertEqual(settings["style"] as? Double, expected.style)
+        XCTAssertEqual(settings["speed"] as? Double, expected.speed)
+        XCTAssertEqual(settings["use_speaker_boost"] as? Bool, expected.speakerBoost)
+    }
+
     func testQuotaDecodesWhetherOverageIsAvailable() async throws {
         MockURLProtocol.responder = { _ in
             let payload: [String: Any] = [
@@ -246,7 +279,11 @@ final class ElevenLabsProviderTests: XCTestCase {
 
     private struct SynthesisDidNotThrow: Error {}
 
-    private func synthesisRequestBody(languageCode: String?) async throws -> [String: Any] {
+    private func synthesisRequestBody(
+        languageCode: String?,
+        modelID: String = "eleven_v3",
+        voiceSettings: VoiceSettings = VoiceSettings()
+    ) async throws -> [String: Any] {
         MockURLProtocol.responder = { _ in
             let payload = ["audio_base64": Data([0x01, 0x02, 0x03]).base64EncodedString()]
             return (Self.httpResponse(statusCode: 200), try JSONSerialization.data(withJSONObject: payload))
@@ -254,7 +291,11 @@ final class ElevenLabsProviderTests: XCTestCase {
 
         let provider = ElevenLabsProvider(session: MockURLProtocol.makeSession())
         _ = try await provider.synthesize(
-            request: Self.makeRequest(languageCode: languageCode),
+            request: Self.makeRequest(
+                languageCode: languageCode,
+                modelID: modelID,
+                voiceSettings: voiceSettings
+            ),
             apiKey: "test-key"
         )
 
@@ -271,7 +312,11 @@ final class ElevenLabsProviderTests: XCTestCase {
         )!
     }
 
-    private static func makeRequest(languageCode: String?) -> SpeechRequest {
+    private static func makeRequest(
+        languageCode: String?,
+        modelID: String = "eleven_v3",
+        voiceSettings: VoiceSettings = VoiceSettings()
+    ) -> SpeechRequest {
         SpeechRequest(
             text: "Hello",
             voice: TTSVoice(
@@ -285,10 +330,10 @@ final class ElevenLabsProviderTests: XCTestCase {
                 locale: nil,
                 language: nil
             ),
-            modelID: "eleven_v3",
+            modelID: modelID,
             outputFormat: "mp3_44100_128",
             languageCode: languageCode,
-            voiceSettings: VoiceSettings()
+            voiceSettings: voiceSettings
         )
     }
 }

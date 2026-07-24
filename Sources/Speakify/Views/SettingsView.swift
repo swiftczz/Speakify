@@ -52,30 +52,24 @@ package struct SettingsView: View {
                         }
                     }
                 }
-            } header: {
-                Text("Speech Service")
-            } footer: {
-                if activeCapabilities.providesSubtitles == false {
-                    Text("This service downloads audio only. Choose ElevenLabs when you also need SRT subtitles.")
-                } else if activeCapabilities.providesCharacterAlignment == false {
-                    Text("This service includes an estimated SRT based on the measured audio duration.")
-                }
-            }
 
-            Section {
-                LabeledContent(activeProviderName) {
+                LabeledContent("API Key") {
                     APIKeyField(text: $settings.apiKey)
                         .id(settings.providerID)
                         .frame(minWidth: 290, idealWidth: 330, maxWidth: 420)
                 }
             } header: {
-                Text("API Key")
+                Text("Speech Service")
             } footer: {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 5) {
+                    if activeCapabilities.providesSubtitles == false {
+                        Text("This service downloads audio only. Choose ElevenLabs when you also need SRT subtitles.")
+                    } else if activeCapabilities.providesCharacterAlignment == false {
+                        Text("This service includes an estimated SRT based on the measured audio duration.")
+                    }
                     Text(LocalizedStringKey(activeCapabilities.apiKeyHint))
                     Text("Stored in Speakify’s local settings for \(activeProviderName).")
                 }
-                .foregroundStyle(.secondary)
             }
 
             Section("Download") {

@@ -6,8 +6,9 @@ import SwiftUI
 /// ticking ten times a second cannot drag it into a re-render.
 struct HistoryPanel: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.locale) private var locale
     @Query(sort: \SpeechHistoryRecord.createdAt, order: .reverse) private var historyRecords: [SpeechHistoryRecord]
-    let onApply: (String) -> Void
+    let onApply: (SpeechHistoryDraft) -> Void
     @State private var searchText = ""
     @State private var selectedHistoryIDs = Set<PersistentIdentifier>()
     @State private var showsDeleteConfirmation = false
@@ -33,7 +34,12 @@ struct HistoryPanel: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(selectedHistoryIDs.isEmpty ? AppPalette.muted.opacity(0.45) : AppPalette.ink)
                 .disabled(selectedHistoryIDs.isEmpty)
-                .help("Delete selected history")
+                .help(
+                    L10n.string(
+                        "Delete selected history",
+                        defaultValue: "Delete selected history"
+                    )
+                )
             }
             .padding(.top, 34)
 
@@ -67,6 +73,7 @@ struct HistoryPanel: View {
         .onAppear(perform: rebuildGroupedHistory)
         .onChange(of: historyRecords) { _, _ in rebuildGroupedHistory() }
         .onChange(of: searchText) { _, _ in rebuildGroupedHistory() }
+        .onChange(of: locale.identifier) { _, _ in rebuildGroupedHistory() }
         .confirmationDialog(
             "Delete selected history?",
             isPresented: $showsDeleteConfirmation
@@ -106,7 +113,8 @@ struct HistoryPanel: View {
             }
         }
 
-        let calendar = Calendar.current
+        var calendar = Calendar.autoupdatingCurrent
+        calendar.locale = locale
         let grouped = Dictionary(grouping: filtered) { item in
             calendar.startOfDay(for: item.createdAt)
         }
@@ -116,29 +124,25 @@ struct HistoryPanel: View {
             .map { day in
                 HistorySectionData(
                     date: day,
-                    title: Self.sectionTitle(for: day, calendar: calendar),
+                    title: Self.sectionTitle(for: day, calendar: calendar, locale: locale),
                     items: (grouped[day] ?? []).sorted { $0.createdAt > $1.createdAt }
                 )
             }
             .filter { $0.items.isEmpty == false }
     }
 
-    private static func sectionTitle(for day: Date, calendar: Calendar) -> String {
+    private static func sectionTitle(for day: Date, calendar: Calendar, locale: Locale) -> String {
         if calendar.isDateInToday(day) {
             return L10n.string("history.today", defaultValue: "Today")
         }
         if calendar.isDateInYesterday(day) {
             return L10n.string("history.yesterday", defaultValue: "Yesterday")
         }
-        return historyDateFormatter.string(from: day)
+        return day.formatted(
+            Date.FormatStyle(date: .abbreviated, time: .omitted)
+                .locale(locale)
+        )
     }
-
-    private static let historyDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
-    }()
 
     private func deleteSelectedHistory() {
         let recordsToDelete = historyRecords.filter {
@@ -161,7 +165,7 @@ private struct HistorySectionData: Identifiable {
 private struct HistorySection: View {
     let section: HistorySectionData
     @Binding var selectedHistoryIDs: Set<PersistentIdentifier>
-    let onApply: (String) -> Void
+    let onApply: (SpeechHistoryDraft) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -175,7 +179,7 @@ private struct HistorySection: View {
                 HistoryRow(
                     item: item,
                     isSelected: selectedHistoryIDs.contains(item.persistentModelID),
-                    onApply: { onApply(item.title) }
+                    onApply: { onApply(item.draft) }
                 )
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -241,7 +245,7 @@ private struct HistoryRow: View {
                 }
                 onApply()
             } label: {
-                Image(systemName: "play.fill")
+                Image(systemName: "arrow.uturn.backward.circle.fill")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(isApplying ? AppPalette.accent : AppPalette.ink)
                     .frame(width: 24, height: 24)
@@ -249,7 +253,12 @@ private struct HistoryRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Apply text to editor")
+            .help(
+                L10n.string(
+                    "Restore to editor",
+                    defaultValue: "Restore to editor"
+                )
+            )
         }
         .padding(.vertical, 8)
         .frame(minHeight: 64)

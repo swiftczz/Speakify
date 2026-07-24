@@ -125,8 +125,8 @@ private struct SidebarRow: View {
 private struct QuotaWidget: View {
     let quota: TTSQuota?
 
-    private var remainingCredits: Int {
-        quota?.remaining ?? 0
+    private var usedCredits: Int {
+        quota?.characterCount ?? 0
     }
 
     private var progressValue: Double {
@@ -134,22 +134,22 @@ private struct QuotaWidget: View {
     }
 
     private var progressColor: Color {
-        if remainingCredits < 1000 {
+        if progressValue >= 0.9 {
             return .red
         }
-        if remainingCredits < 3000 {
+        if progressValue >= 0.7 {
             return .yellow
         }
         return .green
     }
 
     private var ratioText: String {
-        "\(remainingCredits) / \(quota?.characterLimit ?? 0)"
+        "\(usedCredits) / \(quota?.characterLimit ?? 0)"
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Credits (Remaining/Total)")
+            Text("Credits (Used/Total)")
                 .font(.system(size: 12, weight: .regular))
                 .foregroundStyle(AppPalette.ink)
                 .frame(maxWidth: .infinity, alignment: .trailing)

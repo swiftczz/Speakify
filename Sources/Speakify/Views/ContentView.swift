@@ -7,8 +7,8 @@ import SwiftUI
 package struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SubscriptionQuotaSnapshot.updatedAt, order: .reverse) private var subscriptionSnapshots: [SubscriptionQuotaSnapshot]
-    @StateObject private var settings: AppSettings
-    @StateObject private var viewModel: SpeechViewModel
+    @ObservedObject private var settings: AppSettings
+    @State private var viewModel: SpeechViewModel
     @AppStorage("ui.leftSidebarWidth") private var leftWidth = 258.0
     @AppStorage("ui.rightSidebarWidth") private var rightWidth = 310.0
     @AppStorage("ui.leftSidebarCollapsed") private var leftCollapsed = false
@@ -16,8 +16,8 @@ package struct ContentView: View {
     @State private var showsHistoryRecoveryNotice = AppDataLocation.quarantinedHistoryStoreURL != nil
 
     package init(settings: AppSettings) {
-        _settings = StateObject(wrappedValue: settings)
-        _viewModel = StateObject(wrappedValue: SpeechViewModel(settings: settings))
+        self.settings = settings
+        _viewModel = State(initialValue: SpeechViewModel(settings: settings))
     }
 
     private var displayedQuota: TTSQuota? {
@@ -78,7 +78,9 @@ package struct ContentView: View {
             if !rightCollapsed {
                 DragHandle(direction: -1, width: rightWidthBinding, minWidth: 240, maxWidth: 420)
 
-                HistoryPanel(onApply: { viewModel.text = $0 })
+                HistoryPanel(onApply: { draft in
+                    Task { await viewModel.applyHistoryDraft(draft) }
+                })
                     .frame(width: CGFloat(rightWidth))
                     .transition(.move(edge: .trailing))
             }
@@ -99,13 +101,11 @@ package struct ContentView: View {
         .alert("History was reset", isPresented: $showsHistoryRecoveryNotice) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(
-                """
-                Speakify could not open your history database, so it started a new one. \
-                The previous file was kept at \
-                \(AppDataLocation.quarantinedHistoryStoreURL?.path(percentEncoded: false) ?? "").
-                """
-            )
+            Text(verbatim: L10n.format(
+                "history.recovery-message",
+                defaultValue: "Speakify could not open your history database, so it started a new one. The previous file was kept at %@.",
+                AppDataLocation.quarantinedHistoryStoreURL?.path(percentEncoded: false) ?? ""
+            ))
         }
     }
 
@@ -119,13 +119,20 @@ package struct ContentView: View {
             } label: {
                 Image(systemName: "sidebar.left")
             }
-            .help(leftCollapsed ? "Show Sidebar" : "Hide Sidebar")
+            .help(
+                leftCollapsed
+                    ? L10n.string("Show Sidebar", defaultValue: "Show Sidebar")
+                    : L10n.string("Hide Sidebar", defaultValue: "Hide Sidebar")
+            )
         }
 
         ToolbarItem(placement: .principal) {
             HStack(spacing: 12) {
                 ServiceModelToolbarPicker(settings: settings, viewModel: viewModel)
                 VoiceToolbarPicker(viewModel: viewModel)
+                if viewModel.voiceSettingsCapabilities != nil {
+                    VoiceSettingsToolbarButton(viewModel: viewModel)
+                }
             }
         }
 
@@ -139,7 +146,11 @@ package struct ContentView: View {
             } label: {
                 Image(systemName: "sidebar.right")
             }
-            .help(rightCollapsed ? "Show History" : "Hide History")
+            .help(
+                rightCollapsed
+                    ? L10n.string("Show History", defaultValue: "Show History")
+                    : L10n.string("Hide History", defaultValue: "Hide History")
+            )
         }
     }
 

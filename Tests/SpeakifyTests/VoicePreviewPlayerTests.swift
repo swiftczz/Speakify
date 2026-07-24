@@ -21,7 +21,13 @@ final class VoicePreviewPlayerTests: XCTestCase {
             locale: "zh-CN",
             language: "Chinese"
         )
-        let player = VoicePreviewPlayer(hoverDelay: .zero)
+        let cacheDirectory = FileManager.default.temporaryDirectory
+            .appending(path: "SpeakifyPreviewTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let player = VoicePreviewPlayer(
+            hoverDelay: .zero,
+            persistentCache: VoicePreviewCacheStore(directoryURL: cacheDirectory)
+        )
         let configuration = VoicePreviewConfiguration(
             provider: provider,
             modelID: "preview-model",
@@ -68,7 +74,13 @@ final class VoicePreviewPlayerTests: XCTestCase {
             locale: "en-US",
             language: "English"
         )
-        let player = VoicePreviewPlayer(hoverDelay: .zero)
+        let cacheDirectory = FileManager.default.temporaryDirectory
+            .appending(path: "SpeakifyPreviewTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: cacheDirectory) }
+        let player = VoicePreviewPlayer(
+            hoverDelay: .zero,
+            persistentCache: VoicePreviewCacheStore(directoryURL: cacheDirectory)
+        )
         let configuration = VoicePreviewConfiguration(
             provider: provider,
             modelID: "preview-model",
@@ -103,6 +115,40 @@ final class VoicePreviewPlayerTests: XCTestCase {
             VoicePreviewConfiguration(provider: provider, modelID: "m", apiKey: "").accountFingerprint,
             "anonymous"
         )
+    }
+
+    func testPublicSampleCanPreviewWithoutAnAPIKey() {
+        let provider = PreviewTestProvider(recorder: PreviewRequestRecorder(), audioData: Data())
+        let configuration = VoicePreviewConfiguration(
+            provider: provider,
+            modelID: "m",
+            apiKey: ""
+        )
+        let publicVoice = TTSVoice(
+            id: "public",
+            name: "Public",
+            category: "premade",
+            detail: nil,
+            previewURL: URL(string: "https://example.com/public.mp3"),
+            gender: nil,
+            accent: nil,
+            locale: nil,
+            language: nil
+        )
+        let generatedVoice = TTSVoice(
+            id: "generated",
+            name: "Generated",
+            category: nil,
+            detail: nil,
+            previewURL: nil,
+            gender: nil,
+            accent: nil,
+            locale: nil,
+            language: nil
+        )
+
+        XCTAssertTrue(configuration.canPreview(publicVoice))
+        XCTAssertFalse(configuration.canPreview(generatedVoice))
     }
 
     @MainActor

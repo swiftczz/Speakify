@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import XCTest
 @testable import Speakify
 
@@ -106,5 +107,237 @@ final class AppDataLocationMigrationTests: XCTestCase {
             )
         )
         XCTAssertFalse(FileManager.default.fileExists(atPath: legacyCache.path(percentEncoded: false)))
+    }
+}
+
+final class OptimizationFeatureRegressionTests: XCTestCase {
+    func testQuotaProgressRepresentsWhatHasBeenUsed() {
+        let quota = TTSQuota(characterCount: 75, characterLimit: 100)
+
+        XCTAssertEqual(quota.remaining, 25)
+        XCTAssertEqual(quota.usedFraction, 0.75)
+    }
+
+    func testProviderCapabilitiesOwnModelLimitsCreditPolicyAndVoiceSettings() throws {
+        let capabilities = ElevenLabsProvider().capabilities
+        let settings = try XCTUnwrap(capabilities.voiceSettings)
+
+        XCTAssertEqual(capabilities.characterLimit(for: "eleven_v3"), 5_000)
+        XCTAssertEqual(capabilities.characterLimit(for: "eleven_multilingual_v2"), 10_000)
+        XCTAssertEqual(capabilities.characterLimit(for: "eleven_flash_v2_5"), 40_000)
+        XCTAssertEqual(
+            capabilities.estimatedCreditCost(characterCount: 101, modelID: "eleven_flash_v2_5"),
+            51
+        )
+        XCTAssertFalse(settings.supportsSpeed(modelID: "eleven_v3"))
+        XCTAssertTrue(settings.supportsSpeed(modelID: "eleven_multilingual_v2"))
+        XCTAssertEqual(settings.speedRange, 0.7...1.2)
+    }
+
+    func testPreferredVoiceIsPersistedPerProviderAndCredential() throws {
+        let suiteName = "SpeakifyOptimizationTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: defaults)
+
+        settings.setPreferredVoiceID("public-voice", providerID: "elevenlabs", apiKey: "")
+        settings.setPreferredVoiceID("account-voice", providerID: "elevenlabs", apiKey: "secret")
+        settings.setPreferredVoiceID("mimo-voice", providerID: "mimo", apiKey: "secret")
+
+        XCTAssertEqual(
+            settings.preferredVoiceID(providerID: "elevenlabs", apiKey: ""),
+            "public-voice"
+        )
+        XCTAssertEqual(
+            settings.preferredVoiceID(providerID: "elevenlabs", apiKey: "secret"),
+            "account-voice"
+        )
+        XCTAssertEqual(
+            settings.preferredVoiceID(providerID: "mimo", apiKey: "secret"),
+            "mimo-voice"
+        )
+    }
+
+    func testVoiceSettingsArePersistedPerProvider() throws {
+        let suiteName = "SpeakifyVoiceSettingsTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let first = AppSettings(defaults: defaults)
+        let customized = VoiceSettings(
+            stability: 0.25,
+            similarityBoost: 0.9,
+            style: 0.4,
+            speed: 1.15,
+            speakerBoost: false
+        )
+
+        first.setVoiceSettings(customized, for: "elevenlabs")
+        let reloaded = AppSettings(defaults: defaults)
+
+        XCTAssertEqual(reloaded.voiceSettings(for: "elevenlabs"), customized)
+        XCTAssertEqual(reloaded.voiceSettings(for: "mimo"), VoiceSettings())
+    }
+
+    func testStoredVoiceSettingsAreNormalizedToProviderRanges() throws {
+        let suiteName = "SpeakifyVoiceSettingsNormalizationTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: defaults)
+        settings.setVoiceSettings(
+            VoiceSettings(
+                stability: -4,
+                similarityBoost: 8,
+                style: 3,
+                speed: 9,
+                speakerBoost: true
+            ),
+            for: "elevenlabs"
+        )
+
+        XCTAssertEqual(
+            settings.voiceSettings(for: "elevenlabs"),
+            VoiceSettings(
+                stability: 0,
+                similarityBoost: 1,
+                style: 1,
+                speed: 1.2,
+                speakerBoost: true
+            )
+        )
+    }
+
+    func testHistoryDraftRetainsTheFullSpeechConfiguration() {
+        let expectedSettings = VoiceSettings(
+            stability: 0.35,
+            similarityBoost: 0.8,
+            style: 0.2,
+            speed: 1.1,
+            speakerBoost: false
+        )
+        let record = SpeechHistoryRecord(
+            title: "Restore me",
+            providerID: "elevenlabs",
+            voiceName: "Aria",
+            voiceID: "aria",
+            modelID: "eleven_multilingual_v2",
+            outputFormat: "mp3_44100_128",
+            languageCode: "en",
+            voiceSettings: expectedSettings,
+            duration: 2,
+            requestKey: "request"
+        )
+
+        XCTAssertEqual(
+            record.draft,
+            SpeechHistoryDraft(
+                text: "Restore me",
+                providerID: "elevenlabs",
+                voiceID: "aria",
+                modelID: "eleven_multilingual_v2",
+                outputFormat: "mp3_44100_128",
+                languageCode: "en",
+                voiceSettings: expectedSettings
+            )
+        )
+    }
+
+    func testVoiceCatalogCachePersistsAndSeparatesCredentials() async throws {
+        let directory = try temporaryDirectory(prefix: "SpeakifyCatalogCacheTests")
+        let catalog = TTSVoiceCatalog(
+            publicVoices: [Self.voice(id: "public")],
+            accountVoices: [Self.voice(id: "account")]
+        )
+        let writer = VoiceCatalogCacheStore(directoryURL: directory)
+        await writer.store(catalog, providerID: "elevenlabs", apiKey: "first-key")
+
+        let reader = VoiceCatalogCacheStore(directoryURL: directory)
+        let restored = await reader.catalog(providerID: "elevenlabs", apiKey: "first-key")
+        let otherAccount = await reader.catalog(providerID: "elevenlabs", apiKey: "second-key")
+
+        XCTAssertEqual(restored?.voices.map(\.id), ["public", "account"])
+        XCTAssertNil(otherAccount)
+    }
+
+    func testVoicePreviewCachePersistsAudioAcrossStoreInstances() async throws {
+        let directory = try temporaryDirectory(prefix: "SpeakifyPreviewCacheTests")
+        let key = VoicePreviewCacheStore.cacheKey(
+            providerID: "mimo",
+            modelID: "mimo-tts",
+            credentialFingerprint: "account",
+            voiceID: "voice"
+        )
+        let expected = CachedVoicePreview(data: Data([1, 2, 3]), fileExtension: "mp3")
+        let writer = VoicePreviewCacheStore(directoryURL: directory)
+        await writer.store(expected, for: key)
+
+        let reader = VoicePreviewCacheStore(directoryURL: directory)
+        let restored = await reader.preview(for: key)
+
+        XCTAssertEqual(restored?.data, expected.data)
+        XCTAssertEqual(restored?.fileExtension, "mp3")
+    }
+
+    @MainActor
+    func testHistoryStoreReplacesDuplicateRequests() throws {
+        let schema = Schema([SpeechHistoryRecord.self])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = ModelContext(container)
+        let request = SpeechRequest(
+            text: "Same request",
+            voice: Self.voice(id: "voice"),
+            modelID: "model",
+            outputFormat: "mp3",
+            languageCode: "en",
+            voiceSettings: VoiceSettings()
+        )
+        let speech = GeneratedSpeech(
+            audioData: Data([1]),
+            fileExtension: "mp3",
+            request: request,
+            alignment: nil
+        )
+        let store = SpeechHistoryStore()
+
+        try store.record(
+            speech: speech,
+            providerID: "elevenlabs",
+            apiKey: "key",
+            duration: 1,
+            modelContext: context
+        )
+        try store.record(
+            speech: speech,
+            providerID: "elevenlabs",
+            apiKey: "key",
+            duration: 2,
+            modelContext: context
+        )
+
+        let records = try context.fetch(FetchDescriptor<SpeechHistoryRecord>())
+        XCTAssertEqual(records.count, 1)
+        XCTAssertEqual(records.first?.duration, 2)
+    }
+
+    private static func voice(id: String) -> TTSVoice {
+        TTSVoice(
+            id: id,
+            name: id.capitalized,
+            category: nil,
+            detail: nil,
+            previewURL: nil,
+            gender: nil,
+            accent: nil,
+            locale: nil,
+            language: nil
+        )
+    }
+
+    private func temporaryDirectory(prefix: String) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "\(prefix)-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        return directory
     }
 }

@@ -37,7 +37,10 @@ package final class AppSettings: ObservableObject {
     static let defaultDraftText = "The best way to improve listening is to hear natural English every day."
 
     @Published package var appLanguage: AppLanguage {
-        didSet { defaults.set(appLanguage.rawValue, forKey: Keys.appLanguage) }
+        didSet {
+            defaults.set(appLanguage.rawValue, forKey: Keys.appLanguage)
+            L10n.configure(language: appLanguage)
+        }
     }
 
     /// The active speech service. The provider-scoped values below (API key,
@@ -93,8 +96,10 @@ package final class AppSettings: ObservableObject {
         Self.migrateLegacyProviderValues(in: defaults)
         Self.migrateMiMoDefaultOutputFormat(in: defaults)
 
-        appLanguage = AppLanguage(rawValue: defaults.string(forKey: Keys.appLanguage) ?? "")
-            ?? .system
+        let resolvedAppLanguage = AppLanguage(
+            rawValue: defaults.string(forKey: Keys.appLanguage) ?? ""
+        ) ?? .system
+        appLanguage = resolvedAppLanguage
 
         let storedProviderID = defaults.string(forKey: Keys.providerID) ?? ""
         let providerID = TTSProviderRegistry.isKnown(storedProviderID)
@@ -117,6 +122,7 @@ package final class AppSettings: ObservableObject {
         languageCode = defaults.string(forKey: Keys.languageCode) ?? SpeechLanguage.autoDetect
         playbackRate = Self.normalizedPlaybackRate(defaults.object(forKey: Keys.playbackRate) as? Double ?? 1.0)
         draftText = defaults.string(forKey: Keys.draftText) ?? Self.defaultDraftText
+        L10n.configure(language: resolvedAppLanguage)
     }
 
     var downloadDirectoryURL: URL {
@@ -141,6 +147,39 @@ package final class AppSettings: ObservableObject {
             objectWillChange.send()
             defaults.set(key, forKey: Keys.scoped(Keys.apiKey, providerID))
         }
+    }
+
+    func preferredVoiceID(providerID: String, apiKey: String) -> String? {
+        defaults.string(
+            forKey: Keys.preferredVoice(
+                providerID: providerID,
+                credentialFingerprint: CredentialScope.fingerprint(apiKey: apiKey)
+            )
+        )
+    }
+
+    func setPreferredVoiceID(_ voiceID: String, providerID: String, apiKey: String) {
+        defaults.set(
+            voiceID,
+            forKey: Keys.preferredVoice(
+                providerID: providerID,
+                credentialFingerprint: CredentialScope.fingerprint(apiKey: apiKey)
+            )
+        )
+    }
+
+    func voiceSettings(for providerID: String) -> VoiceSettings {
+        guard let data = defaults.data(forKey: Keys.scoped(Keys.voiceSettings, providerID)),
+              let settings = try? JSONDecoder().decode(VoiceSettings.self, from: data) else {
+            return VoiceSettings()
+        }
+        let capabilities = TTSProviderRegistry.provider(withID: providerID).capabilities
+        return capabilities.voiceSettings?.normalized(settings) ?? settings
+    }
+
+    func setVoiceSettings(_ settings: VoiceSettings, for providerID: String) {
+        guard let data = try? JSONEncoder().encode(settings) else { return }
+        defaults.set(data, forKey: Keys.scoped(Keys.voiceSettings, providerID))
     }
 
     private func loadProviderScopedValues() {
@@ -202,9 +241,17 @@ package final class AppSettings: ObservableObject {
         static let playbackRate = "playbackRate"
         static let draftText = "draftText"
         static let migratedMiMoMP3Default = "migration.mimoDefaultOutputFormat.mp3"
+        static let voiceSettings = "voiceSettings"
 
         static func scoped(_ base: String, _ providerID: String) -> String {
             "\(base).\(providerID)"
+        }
+
+        static func preferredVoice(
+            providerID: String,
+            credentialFingerprint: String
+        ) -> String {
+            "preferredVoiceID.\(providerID).\(credentialFingerprint)"
         }
     }
 

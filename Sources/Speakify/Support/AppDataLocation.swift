@@ -32,6 +32,22 @@ package enum AppDataLocation {
         return directoryURL
     }
 
+    package static func voiceCatalogCacheDirectoryURL(fileManager: FileManager = .default) -> URL {
+        prepare(fileManager: fileManager)
+        let directoryURL = rootDirectoryURL(fileManager: fileManager)
+            .appending(path: "VoiceCatalogCache", directoryHint: .isDirectory)
+        ensureDirectoryExists(at: directoryURL, fileManager: fileManager)
+        return directoryURL
+    }
+
+    package static func voicePreviewCacheDirectoryURL(fileManager: FileManager = .default) -> URL {
+        prepare(fileManager: fileManager)
+        let directoryURL = rootDirectoryURL(fileManager: fileManager)
+            .appending(path: "VoicePreviewCache", directoryHint: .isDirectory)
+        ensureDirectoryExists(at: directoryURL, fileManager: fileManager)
+        return directoryURL
+    }
+
     package static func defaultExportsDirectoryURL(fileManager: FileManager = .default) -> URL {
         prepare(fileManager: fileManager)
         let directoryURL = rootDirectoryURL(fileManager: fileManager)

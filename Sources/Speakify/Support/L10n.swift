@@ -1,6 +1,13 @@
 import Foundation
+import Synchronization
 
 enum L10n {
+    private static let language = Mutex(AppLanguage.system)
+
+    static func configure(language newLanguage: AppLanguage) {
+        language.withLock { $0 = newLanguage }
+    }
+
     static func string(_ key: String, defaultValue: String) -> String {
         localizedBundle.localizedString(forKey: key, value: defaultValue, table: nil)
     }
@@ -22,9 +29,7 @@ enum L10n {
     }
 
     private static var selectedLanguage: AppLanguage {
-        AppLanguage(
-            rawValue: UserDefaults.standard.string(forKey: "appLanguage") ?? ""
-        ) ?? .system
+        language.withLock { $0 }
     }
 
     private static var localizedBundle: Bundle {

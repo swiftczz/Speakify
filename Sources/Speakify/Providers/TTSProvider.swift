@@ -1,5 +1,50 @@
 import Foundation
 
+enum TTSCreditPolicy: Sendable {
+    case none
+    case characters(defaultMultiplier: Double, modelMultipliers: [String: Double])
+
+    func estimatedCost(characterCount: Int, modelID: String) -> Int {
+        let normalizedCount = max(characterCount, 0)
+        switch self {
+        case .none:
+            return 0
+        case let .characters(defaultMultiplier, modelMultipliers):
+            let multiplier = modelMultipliers[modelID] ?? defaultMultiplier
+            return Int(ceil(Double(normalizedCount) * multiplier))
+        }
+    }
+}
+
+struct TTSVoiceSettingsCapabilities: Sendable {
+    let stabilityRange: ClosedRange<Double>
+    let similarityRange: ClosedRange<Double>
+    let styleRange: ClosedRange<Double>
+    let speedRange: ClosedRange<Double>
+    let modelsWithoutSpeed: Set<String>
+    let supportsSpeakerBoost: Bool
+
+    func supportsSpeed(modelID: String) -> Bool {
+        modelsWithoutSpeed.contains(modelID) == false
+    }
+
+    func normalized(_ settings: VoiceSettings) -> VoiceSettings {
+        VoiceSettings(
+            stability: settings.stability.clamped(to: stabilityRange),
+            similarityBoost: settings.similarityBoost.clamped(to: similarityRange),
+            style: settings.style.clamped(to: styleRange),
+            speed: settings.speed.clamped(to: speedRange),
+            speakerBoost: settings.speakerBoost
+        )
+    }
+}
+
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
 /// What a speech service can do, so the UI and view model adapt to the active
 /// provider without ever switching on a concrete type.
 struct TTSProviderCapabilities: Sendable {
@@ -22,6 +67,51 @@ struct TTSProviderCapabilities: Sendable {
     let meteredSynthesis: Bool
     /// Shown under the provider's API key field in Settings.
     let apiKeyHint: String
+    let requiresAPIKey: Bool
+    let defaultCharacterLimit: Int
+    let modelCharacterLimits: [String: Int]
+    let creditPolicy: TTSCreditPolicy
+    let voiceSettings: TTSVoiceSettingsCapabilities?
+
+    init(
+        outputFormats: [String],
+        defaultOutputFormat: String,
+        defaultModelID: String,
+        reportsQuota: Bool,
+        providesSubtitles: Bool,
+        providesCharacterAlignment: Bool,
+        acceptsLanguageHint: Bool,
+        meteredSynthesis: Bool,
+        apiKeyHint: String,
+        requiresAPIKey: Bool = true,
+        defaultCharacterLimit: Int = TTSLimits.maxCharacterCount,
+        modelCharacterLimits: [String: Int] = [:],
+        creditPolicy: TTSCreditPolicy = .none,
+        voiceSettings: TTSVoiceSettingsCapabilities? = nil
+    ) {
+        self.outputFormats = outputFormats
+        self.defaultOutputFormat = defaultOutputFormat
+        self.defaultModelID = defaultModelID
+        self.reportsQuota = reportsQuota
+        self.providesSubtitles = providesSubtitles
+        self.providesCharacterAlignment = providesCharacterAlignment
+        self.acceptsLanguageHint = acceptsLanguageHint
+        self.meteredSynthesis = meteredSynthesis
+        self.apiKeyHint = apiKeyHint
+        self.requiresAPIKey = requiresAPIKey
+        self.defaultCharacterLimit = defaultCharacterLimit
+        self.modelCharacterLimits = modelCharacterLimits
+        self.creditPolicy = creditPolicy
+        self.voiceSettings = voiceSettings
+    }
+
+    func characterLimit(for modelID: String) -> Int {
+        modelCharacterLimits[modelID] ?? defaultCharacterLimit
+    }
+
+    func estimatedCreditCost(characterCount: Int, modelID: String) -> Int {
+        creditPolicy.estimatedCost(characterCount: characterCount, modelID: modelID)
+    }
 }
 
 /// Keeps provider-supplied voices grouped by their source while exposing the
@@ -34,12 +124,19 @@ struct TTSVoiceCatalog: Equatable, Sendable {
     /// public half succeeded, so the picker can still fill up and the UI can explain
     /// what is missing instead of failing the whole load.
     let accountFailure: String?
+    let accountVoicesAreCached: Bool
 
-    init(publicVoices: [TTSVoice], accountVoices: [TTSVoice], accountFailure: String? = nil) {
+    init(
+        publicVoices: [TTSVoice],
+        accountVoices: [TTSVoice],
+        accountFailure: String? = nil,
+        accountVoicesAreCached: Bool = false
+    ) {
         self.publicVoices = Self.unique(publicVoices)
         let publicIDs = Set(self.publicVoices.map(\.id))
         self.accountVoices = Self.unique(accountVoices).filter { publicIDs.contains($0.id) == false }
         self.accountFailure = accountFailure
+        self.accountVoicesAreCached = accountVoicesAreCached
     }
 
     var voices: [TTSVoice] {

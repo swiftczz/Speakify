@@ -13,7 +13,25 @@ struct ElevenLabsProvider: TTSProvider {
         providesCharacterAlignment: true,
         acceptsLanguageHint: true,
         meteredSynthesis: true,
-        apiKeyHint: "Create a key at elevenlabs.io under Profile → API Keys."
+        apiKeyHint: "Create a key at elevenlabs.io under Profile → API Keys.",
+        defaultCharacterLimit: 5_000,
+        modelCharacterLimits: [
+            "eleven_v3": 5_000,
+            "eleven_multilingual_v2": 10_000,
+            "eleven_flash_v2_5": 40_000
+        ],
+        creditPolicy: .characters(
+            defaultMultiplier: 1,
+            modelMultipliers: ["eleven_flash_v2_5": 0.5]
+        ),
+        voiceSettings: TTSVoiceSettingsCapabilities(
+            stabilityRange: 0...1,
+            similarityRange: 0...1,
+            styleRange: 0...1,
+            speedRange: 0.7...1.2,
+            modelsWithoutSpeed: ["eleven_v3"],
+            supportsSpeakerBoost: true
+        )
     )
 
     static let supportedModelIDs = [
@@ -381,7 +399,10 @@ private struct ElevenLabsSpeechBody: Encodable {
         text = request.text
         modelID = request.modelID
         languageCode = request.languageCode
-        voiceSettings = ElevenLabsVoiceSettings(from: request.voiceSettings)
+        voiceSettings = ElevenLabsVoiceSettings(
+            from: request.voiceSettings,
+            includesSpeed: request.modelID != "eleven_v3"
+        )
     }
 
     enum CodingKeys: String, CodingKey {
@@ -397,14 +418,14 @@ private struct ElevenLabsVoiceSettings: Encodable {
     let similarityBoost: Double
     let style: Double
     let useSpeakerBoost: Bool
-    let speed: Double
+    let speed: Double?
 
-    init(from settings: VoiceSettings) {
+    init(from settings: VoiceSettings, includesSpeed: Bool) {
         stability = settings.stability
         similarityBoost = settings.similarityBoost
         style = settings.style
         useSpeakerBoost = settings.speakerBoost
-        speed = settings.speed
+        speed = includesSpeed ? settings.speed : nil
     }
 
     enum CodingKeys: String, CodingKey {

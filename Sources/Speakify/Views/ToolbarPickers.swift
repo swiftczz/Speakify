@@ -4,7 +4,7 @@ import SwiftUI
 /// one menu covers "which engine, which voice quality" in a single step.
 struct ServiceModelToolbarPicker: View {
     @ObservedObject var settings: AppSettings
-    @ObservedObject var viewModel: SpeechViewModel
+    let viewModel: SpeechViewModel
 
     private var selection: Binding<ServiceModelSelection> {
         Binding {
@@ -39,7 +39,12 @@ struct ServiceModelToolbarPicker: View {
         .labelsHidden()
         .controlSize(.small)
         .frame(width: 228)
-        .help("Speech service and model")
+        .help(
+            L10n.string(
+                "Speech service and model",
+                defaultValue: "Speech service and model"
+            )
+        )
         .accessibilityLabel("Speech service and model")
     }
 
@@ -58,8 +63,8 @@ private struct ServiceModelSelection: Hashable {
 
 /// The toolbar's voice button and the popover it opens.
 struct VoiceToolbarPicker: View {
-    @ObservedObject var viewModel: SpeechViewModel
-    @StateObject private var previewPlayer = VoicePreviewPlayer()
+    let viewModel: SpeechViewModel
+    @State private var previewPlayer = VoicePreviewPlayer()
     @State private var isPresented = false
 
     var body: some View {
@@ -82,7 +87,10 @@ struct VoiceToolbarPicker: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .help(viewModel.selectedVoice?.displayName ?? "Select a voice")
+        .help(
+            viewModel.selectedVoice?.displayName
+                ?? L10n.string("Select a voice", defaultValue: "Select a voice")
+        )
         .accessibilityLabel("Voice")
         .popover(isPresented: $isPresented, arrowEdge: .top) {
             VoiceSelectionPopover(
@@ -99,8 +107,8 @@ struct VoiceToolbarPicker: View {
 }
 
 private struct VoiceSelectionPopover: View {
-    @ObservedObject var viewModel: SpeechViewModel
-    @ObservedObject var previewPlayer: VoicePreviewPlayer
+    @Bindable var viewModel: SpeechViewModel
+    let previewPlayer: VoicePreviewPlayer
     @Binding var isPresented: Bool
 
     private var rowCount: Int {
@@ -168,36 +176,46 @@ private struct VoiceSelectionPopover: View {
 private struct VoiceOptionRow: View {
     let voice: TTSVoice
     let isSelected: Bool
-    @ObservedObject var previewPlayer: VoicePreviewPlayer
+    let previewPlayer: VoicePreviewPlayer
     let previewConfiguration: VoicePreviewConfiguration
     let onSelect: () -> Void
+    @StateObject private var previewState = VoicePreviewRowState()
     @State private var isHovered = false
     @State private var isPreviewButtonHovered = false
 
-    private var isPreviewActive: Bool {
-        previewPlayer.activeVoiceID == voice.id
-    }
-
     private var isPreviewPlaying: Bool {
-        isPreviewActive && previewPlayer.isPlaying
+        previewState.isActive && previewState.isPlaying
     }
 
     private var previewError: String? {
-        guard previewPlayer.errorVoiceID == voice.id else { return nil }
-        return previewPlayer.errorMessage
+        previewState.errorMessage
     }
 
     private var previewHint: String {
-        previewConfiguration.requiresExplicitStart(for: voice)
-            ? "Click to preview \(voice.name) — this synthesizes a short sample and uses credits"
-            : "Hover to preview \(voice.name)"
+        guard previewConfiguration.canPreview(voice) else {
+            return L10n.string(
+                "preview.add-key",
+                defaultValue: "Add this provider’s API key in Settings to preview voices"
+            )
+        }
+        return previewConfiguration.requiresExplicitStart(for: voice)
+            ? L10n.format(
+                "preview.click-metered",
+                defaultValue: "Click to preview %@ — this synthesizes a short sample and uses credits",
+                voice.name
+            )
+            : L10n.format(
+                "preview.hover",
+                defaultValue: "Hover to preview %@",
+                voice.name
+            )
     }
 
     private var previewIconStyle: AnyShapeStyle {
         if previewError != nil {
             return AnyShapeStyle(.red)
         }
-        return isPreviewActive || isPreviewButtonHovered
+        return previewState.isActive || isPreviewButtonHovered
             ? AnyShapeStyle(.primary)
             : AnyShapeStyle(.secondary)
     }
@@ -224,7 +242,8 @@ private struct VoiceOptionRow: View {
             Button {
                 previewPlayer.togglePreview(
                     for: voice,
-                    configuration: previewConfiguration
+                    configuration: previewConfiguration,
+                    state: previewState
                 )
             } label: {
                 AnimatedWaveformIcon(isAnimating: isPreviewPlaying)
@@ -238,15 +257,23 @@ private struct VoiceOptionRow: View {
                 if isHovering {
                     previewPlayer.beginPreview(
                         for: voice,
-                        configuration: previewConfiguration
+                        configuration: previewConfiguration,
+                        state: previewState
                     )
                 } else {
                     previewPlayer.endPreview(for: voice.id)
-                    previewPlayer.clearError(for: voice.id)
+                    previewPlayer.clearError(for: voice.id, state: previewState)
                 }
             }
+            .disabled(previewConfiguration.canPreview(voice) == false)
             .help(previewError ?? previewHint)
-            .accessibilityLabel("Preview \(voice.name)")
+            .accessibilityLabel(
+                L10n.format(
+                    "preview.accessibility",
+                    defaultValue: "Preview %@",
+                    voice.name
+                )
+            )
         }
         .padding(.leading, 10)
         .padding(.trailing, 8)
@@ -280,5 +307,118 @@ private struct AnimatedWaveformIcon: View {
         let time = date.timeIntervalSinceReferenceDate
         let wave = abs(sin(time * 7 + Double(index) * 0.9))
         return 5 + CGFloat(wave) * 12
+    }
+}
+
+struct VoiceSettingsToolbarButton: View {
+    let viewModel: SpeechViewModel
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            isPresented.toggle()
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .help(L10n.string("Voice settings", defaultValue: "Voice settings"))
+        .accessibilityLabel("Voice settings")
+        .popover(isPresented: $isPresented, arrowEdge: .top) {
+            VoiceSettingsPopover(viewModel: viewModel)
+        }
+    }
+}
+
+private struct VoiceSettingsPopover: View {
+    @Bindable var viewModel: SpeechViewModel
+
+    private var capabilities: TTSVoiceSettingsCapabilities? {
+        viewModel.voiceSettingsCapabilities
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Voice Settings")
+                .font(.headline)
+
+            if let capabilities {
+                VoiceSettingSlider(
+                    title: "Stability",
+                    value: binding(\.stability),
+                    range: capabilities.stabilityRange
+                )
+                VoiceSettingSlider(
+                    title: "Similarity",
+                    value: binding(\.similarityBoost),
+                    range: capabilities.similarityRange
+                )
+                VoiceSettingSlider(
+                    title: "Style",
+                    value: binding(\.style),
+                    range: capabilities.styleRange
+                )
+
+                if capabilities.supportsSpeed(modelID: viewModel.settings.modelID) {
+                    VoiceSettingSlider(
+                        title: "Generation Speed",
+                        value: binding(\.speed),
+                        range: capabilities.speedRange
+                    )
+                } else {
+                    LabeledContent("Generation Speed") {
+                        Text("Unavailable for this model")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if capabilities.supportsSpeakerBoost {
+                    Toggle(
+                        "Speaker Boost",
+                        isOn: binding(\.speakerBoost)
+                    )
+                }
+
+                Divider()
+
+                Button("Reset Voice Settings") {
+                    viewModel.voiceSettings = VoiceSettings()
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(18)
+        .frame(width: 320)
+    }
+
+    private func binding<Value>(
+        _ keyPath: WritableKeyPath<VoiceSettings, Value>
+    ) -> Binding<Value> {
+        Binding {
+            viewModel.voiceSettings[keyPath: keyPath]
+        } set: { newValue in
+            var settings = viewModel.voiceSettings
+            settings[keyPath: keyPath] = newValue
+            viewModel.voiceSettings = settings
+        }
+    }
+}
+
+private struct VoiceSettingSlider: View {
+    let title: LocalizedStringKey
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(value, format: .number.precision(.fractionLength(2)))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            Slider(value: $value, in: range)
+        }
     }
 }

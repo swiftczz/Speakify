@@ -3,7 +3,7 @@ import SwiftUI
 /// The centre pane: the title, the text editor, and the transport bar below it.
 struct MainWorkspace: View {
     @ObservedObject var settings: AppSettings
-    @ObservedObject var viewModel: SpeechViewModel
+    @Bindable var viewModel: SpeechViewModel
 
     var body: some View {
         VStack(spacing: 18) {
@@ -29,7 +29,7 @@ struct MainWorkspace: View {
 }
 
 private struct EditorCard: View {
-    @ObservedObject var viewModel: SpeechViewModel
+    @Bindable var viewModel: SpeechViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -41,7 +41,7 @@ private struct EditorCard: View {
                 .padding(22)
 
             HStack(alignment: .center, spacing: 16) {
-                Text("\(viewModel.text.count) / \(TTSLimits.maxCharacterCount)")
+                Text("\(viewModel.text.count) / \(viewModel.characterLimit)")
                     .font(.system(size: 13, weight: .regular))
                     .monospacedDigit()
                     .foregroundStyle(viewModel.isTextOverLimit ? Color.red : AppPalette.muted)
@@ -60,7 +60,7 @@ private struct EditorCard: View {
 }
 
 private struct GenerationStatusView: View {
-    @ObservedObject var viewModel: SpeechViewModel
+    let viewModel: SpeechViewModel
 
     private var foregroundColor: Color {
         switch viewModel.visibleStatusTone {
@@ -98,6 +98,12 @@ private struct GenerationStatusView: View {
         .frame(maxWidth: 420, alignment: .trailing)
         .help(viewModel.visibleStatusMessage)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Speech status: \(viewModel.visibleStatusMessage)")
+        .accessibilityLabel(
+            L10n.format(
+                "Speech status: %@",
+                defaultValue: "Speech status: %@",
+                viewModel.visibleStatusMessage
+            )
+        )
     }
 }

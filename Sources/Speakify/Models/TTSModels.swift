@@ -24,6 +24,7 @@ struct TTSQuota: Equatable, Sendable {
         guard characterLimit > 0 else { return 0 }
         return min(1, Double(characterCount) / Double(characterLimit))
     }
+
 }
 
 enum OutputFormat {

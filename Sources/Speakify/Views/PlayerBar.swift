@@ -5,7 +5,7 @@ import SwiftUI
 struct PlayerBar: View {
     @Environment(\.modelContext) private var modelContext
     @ObservedObject var settings: AppSettings
-    @ObservedObject var viewModel: SpeechViewModel
+    let viewModel: SpeechViewModel
     @ObservedObject var playback: PlaybackStore
     @State private var isAnimatingPlayButton = false
     @State private var isAnimatingDownloadButton = false
@@ -101,7 +101,11 @@ struct PlayerBar: View {
                 && playback.isPlaying == false
                 && viewModel.isGenerating == false
         )
-        .help(viewModel.isGenerating ? "Cancel generation" : "Play")
+        .help(
+            viewModel.isGenerating
+                ? L10n.string("Cancel generation", defaultValue: "Cancel generation")
+                : L10n.string("Play", defaultValue: "Play")
+        )
     }
 
     private var downloadButton: some View {
