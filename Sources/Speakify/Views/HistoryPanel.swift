@@ -1,4 +1,3 @@
-import AppKit
 import SwiftData
 import SwiftUI
 
@@ -190,46 +189,45 @@ private struct HistoryRow: View {
     }
 }
 
-private struct HistorySearchField: NSViewRepresentable {
+private struct HistorySearchField: View {
     @Binding var text: String
+    @FocusState private var isFocused: Bool
 
-    func makeNSView(context: Context) -> NSSearchField {
-        let field = NSSearchField()
-        field.delegate = context.coordinator
-        field.placeholderString = L10n.string(
-            "Search history",
-            defaultValue: "Search history"
-        )
-        field.setAccessibilityLabel(
-            L10n.string("Search history", defaultValue: "Search history")
-        )
-        field.sendsSearchStringImmediately = true
-        field.sendsWholeSearchString = false
-        return field
-    }
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
 
-    func updateNSView(_ nsView: NSSearchField, context: Context) {
-        context.coordinator.text = $text
-        if nsView.stringValue != text {
-            nsView.stringValue = text
+            TextField("Search history", text: $text)
+                .textFieldStyle(.plain)
+                .focused($isFocused)
+                .accessibilityLabel(Text("Search history"))
+                .onKeyPress(.escape) {
+                    guard text.isEmpty == false else { return .ignored }
+                    text = ""
+                    return .handled
+                }
+
+            if text.isEmpty == false {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.callout)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Clear search"))
+            }
         }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, NSSearchFieldDelegate {
-        var text: Binding<String>
-
-        init(text: Binding<String>) {
-            self.text = text
-        }
-
-        func controlTextDidChange(_ notification: Notification) {
-            guard let field = notification.object as? NSSearchField else { return }
-            text.wrappedValue = field.stringValue
-        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.quaternary, in: Capsule())
+        .contentShape(Capsule())
+        .onTapGesture { isFocused = true }
     }
 }
