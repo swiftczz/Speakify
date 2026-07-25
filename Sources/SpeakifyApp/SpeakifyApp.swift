@@ -7,28 +7,9 @@ import Speakify
 struct SpeakifyApp: App {
     @State private var settings = AppSettings()
 
-    private let historyModelContainer: ModelContainer = {
-        let schema = Schema([SpeechHistoryRecord.self, SubscriptionQuotaSnapshot.self])
-        AppDataLocation.prepare()
-        let storeURL = AppDataLocation.historyStoreURL()
-
-        let configuration = ModelConfiguration("History", schema: schema, url: storeURL)
-        do {
-            return try ModelContainer(for: schema, configurations: [configuration])
-        } catch {
-            // A history store that will not open used to take the whole app down on
-            // launch. Set it aside instead and start a fresh one; the old file stays
-            // on disk, and the window tells the user where it went.
-            AppDataLocation.quarantineHistoryStore()
-            if let recovered = try? ModelContainer(for: schema, configurations: [configuration]) {
-                return recovered
-            }
-
-            // Last resort: run without persistence rather than refuse to launch.
-            let inMemory = ModelConfiguration("History", schema: schema, isStoredInMemoryOnly: true)
-            return try! ModelContainer(for: schema, configurations: [inMemory])
-        }
-    }()
+    /// Built by the module that declares the models. The schema and the recovery
+    /// ladder live next to `SpeechHistoryRecord` rather than here.
+    private let historyModelContainer = HistoryModelContainer.make()
 
     var body: some Scene {
         // `Window` rather than `WindowGroup`: this is a single-session tool, and the

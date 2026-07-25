@@ -1,8 +1,9 @@
-import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 package struct SettingsView: View {
     @Bindable var settings: AppSettings
+    @State private var isChoosingDownloadDirectory = false
 
     private var activeCapabilities: TTSProviderCapabilities {
         TTSProviderRegistry.provider(withID: settings.providerID).capabilities
@@ -94,14 +95,25 @@ package struct SettingsView: View {
                             )
 
                         Button("Choose…") {
-                            chooseDownloadDirectory()
+                            isChoosingDownloadDirectory = true
                         }
                     }
                 }
             }
         }
         .formStyle(.grouped)
-        .scenePadding()
+        // `.fileImporter`, not `NSOpenPanel().runModal()`. The panel version blocked the
+        // run loop from inside a view's action and needed AppKit imported into a
+        // SwiftUI file; this is declarative, and the sandbox grants the same access.
+        .fileImporter(
+            isPresented: $isChoosingDownloadDirectory,
+            allowedContentTypes: [.folder]
+        ) { result in
+            if case let .success(url) = result {
+                settings.downloadDirectoryPath = url.path()
+            }
+        }
+        .fileDialogDefaultDirectory(settings.downloadDirectoryURL)
         .frame(
             minWidth: 560,
             idealWidth: 620,
@@ -112,17 +124,6 @@ package struct SettingsView: View {
         )
     }
 
-    private func chooseDownloadDirectory() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.directoryURL = settings.downloadDirectoryURL
-
-        if panel.runModal() == .OK, let url = panel.url {
-            settings.downloadDirectoryPath = url.path()
-        }
-    }
 }
 
 /// A secure entry field with a reveal toggle, in the style of password fields
@@ -168,11 +169,7 @@ private struct APIKeyField: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .contentShape(Rectangle())
-            .help(
-                isRevealed
-                    ? L10n.string("Hide API key", defaultValue: "Hide API key")
-                    : L10n.string("Show API key", defaultValue: "Show API key")
-            )
+            .help(isRevealed ? Text("Hide API key") : Text("Show API key"))
             .accessibilityLabel(Text(isRevealed ? "Hide API key" : "Show API key"))
         }
     }

@@ -42,12 +42,7 @@ struct ServiceModelToolbarPicker: View {
         // centred toolbar region, and macOS silently dropped the item that no
         // longer fitted rather than shrinking anything.
         .frame(minWidth: 150, idealWidth: 200, maxWidth: 228)
-        .help(
-            L10n.string(
-                "Speech service and model",
-                defaultValue: "Speech service and model"
-            )
-        )
+        .help(Text("Speech service and model"))
         .accessibilityLabel("Speech service and model")
     }
 
@@ -362,7 +357,7 @@ struct VoiceSettingsToolbarButton: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .help(L10n.string("Voice settings", defaultValue: "Voice settings"))
+        .help(Text("Voice settings"))
         .accessibilityLabel("Voice settings")
         .popover(isPresented: $isPresented, arrowEdge: .top) {
             VoiceSettingsPopover(viewModel: viewModel)

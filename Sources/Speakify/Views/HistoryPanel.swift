@@ -212,12 +212,7 @@ private struct HistoryRow: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
-            .help(
-                L10n.string(
-                    "Restore to editor",
-                    defaultValue: "Restore to editor"
-                )
-            )
+            .help(Text("Restore to editor"))
             .accessibilityLabel(Text("Restore to editor"))
         }
         .padding(.vertical, 4)

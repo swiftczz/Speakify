@@ -79,7 +79,7 @@ final class SpeechViewModel {
     @ObservationIgnored private var lastSpeech: GeneratedSpeech?
     @ObservationIgnored private var lastSpeechScope: String?
     @ObservationIgnored private var quotaRefreshTask: Task<Void, Never>?
-    @ObservationIgnored private var synthesisTask: Task<GeneratedSpeech, Error>?
+    @ObservationIgnored private var synthesisTask: Task<GeneratedSpeech, any Error>?
     @ObservationIgnored private var catalogTask: Task<Void, Never>?
     @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
     /// Bumped whenever a synthesis starts or is cancelled, so a superseded run
@@ -676,7 +676,7 @@ final class SpeechViewModel {
         return "Speech generation is already running."
     }
 
-    private static func isCancellation(_ error: Error) -> Bool {
+    private static func isCancellation(_ error: any Error) -> Bool {
         if error is CancellationError {
             return true
         }
@@ -995,7 +995,7 @@ final class SpeechViewModel {
         pendingPreferredVoiceID = nil
     }
 
-    private func removeSelectedVoiceIfUnavailable(_ error: Error) {
+    private func removeSelectedVoiceIfUnavailable(_ error: any Error) {
         guard let selectedVoice, Self.isUnavailableVoiceError(error) else { return }
         allVoices.removeAll { $0.id == selectedVoice.id }
         voices.removeAll { $0.id == selectedVoice.id }
@@ -1008,7 +1008,7 @@ final class SpeechViewModel {
     /// Deliberately narrow: only the service's explicit "this voice is gone" code
     /// removes a voice. Matching loose phrases such as "not available" also caught
     /// unrelated failures (quota, permissions) and dropped a perfectly good voice.
-    nonisolated static func isUnavailableVoiceError(_ error: Error) -> Bool {
+    nonisolated static func isUnavailableVoiceError(_ error: any Error) -> Bool {
         guard case let TTSProviderError.httpStatus(_, _, code) = error else { return false }
         return code == "voice_not_found"
     }

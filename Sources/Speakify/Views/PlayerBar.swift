@@ -112,11 +112,7 @@ struct PlayerBar: View {
                 && playback.isPlaying == false
                 && viewModel.isGenerating == false
         )
-        .help(
-            viewModel.isGenerating
-                ? L10n.string("Cancel generation", defaultValue: "Cancel generation")
-                : L10n.string("Play", defaultValue: "Play")
-        )
+        .help(viewModel.isGenerating ? Text("Cancel generation") : Text("Play"))
         .accessibilityLabel(
             viewModel.isGenerating
                 ? Text("Cancel generation")
@@ -243,7 +239,7 @@ private struct PlaybackRateControl: View {
         // material is not meant to be used in.
         .buttonStyle(.bordered)
         .controlSize(.large)
-        .help(L10n.string("Playback speed", defaultValue: "Playback speed"))
+        .help(Text("Playback speed"))
         .popover(isPresented: $showsPopover, attachmentAnchor: .rect(.bounds), arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {

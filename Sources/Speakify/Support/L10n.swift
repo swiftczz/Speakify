@@ -15,7 +15,7 @@ enum L10n {
     static func format(
         _ key: String,
         defaultValue: String,
-        _ arguments: CVarArg...
+        _ arguments: any CVarArg...
     ) -> String {
         String(
             format: string(key, defaultValue: defaultValue),

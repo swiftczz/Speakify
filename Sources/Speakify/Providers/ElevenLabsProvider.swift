@@ -342,7 +342,7 @@ private struct ElevenLabsVoicesResponse: Decodable {
         case nextPageToken = "next_page_token"
     }
 
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         voices = try container.decode([ElevenLabsVoice].self, forKey: .voices)
         // `/v1/voices` returns neither field and is never paged.
@@ -370,7 +370,7 @@ private struct ElevenLabsVoice: Decodable {
         case verifiedLanguages = "verified_languages"
     }
 
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         voiceID = try container.decode(String.self, forKey: .voiceID)
         name = try container.decode(String.self, forKey: .name)

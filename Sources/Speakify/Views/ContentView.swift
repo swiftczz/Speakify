@@ -195,11 +195,7 @@ package struct ContentView: View {
                     Image(systemName: "clock.arrow.circlepath")
                 }
             }
-            .help(
-                isHistoryVisible
-                    ? L10n.string("Hide History", defaultValue: "Hide History")
-                    : L10n.string("Show History", defaultValue: "Show History")
-            )
+            .help(isHistoryVisible ? Text("Hide History") : Text("Show History"))
         }
     }
 

@@ -28,7 +28,13 @@ struct MainWorkspace: View {
         .background(.background)
         // The heading used to be a `Text` drawn at the top of this pane while the real
         // window title was suppressed. It is the window's title; the toolbar shows it.
-        .navigationTitle("Text to Speech")
+        //
+        // Resolved through `L10n`, not as a `LocalizedStringKey`. A navigation title
+        // becomes the *window's* title, and that is settled at the scene level — outside
+        // the view tree carrying `\.locale` — so a literal here followed the system
+        // language while every other string in the window followed the app's own picker.
+        // Same reason `SpeechCommands` cannot use literals either.
+        .navigationTitle(Text(verbatim: L10n.string("Text to Speech", defaultValue: "Text to Speech")))
     }
 }
 
