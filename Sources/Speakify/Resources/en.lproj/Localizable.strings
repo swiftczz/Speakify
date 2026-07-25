@@ -119,3 +119,5 @@
 "Sidebar" = "Sidebar";
 "Show Sidebar" = "Show Sidebar";
 "Hide Sidebar" = "Hide Sidebar";
+"status.playback-paused" = "Playback paused.";
+"Resume" = "Resume";

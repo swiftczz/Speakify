@@ -33,6 +33,7 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollEdgeEffectStyle(.soft, for: .bottom)
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 12) {
                 if reportsQuota {
@@ -97,16 +98,6 @@ private struct QuotaWidget: View {
         quota?.usedFraction ?? 0
     }
 
-    private var progressColor: Color {
-        if progressValue >= 0.9 {
-            return .red
-        }
-        if progressValue >= 0.7 {
-            return .yellow
-        }
-        return .green
-    }
-
     private var ratioText: String {
         "\(usedCredits) / \(quota?.characterLimit ?? 0)"
     }
@@ -114,23 +105,22 @@ private struct QuotaWidget: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Credits (Used/Total)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .foregroundStyle(.secondary)
 
             Text(verbatim: ratioText)
-                .font(.caption)
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .foregroundStyle(.secondary)
 
-            ProgressView(value: progressValue)
-                .tint(progressColor)
-                .controlSize(.small)
+            Gauge(value: progressValue) {
+                EmptyView()
+            }
+            .gaugeStyle(.accessoryLinearCapacity)
         }
+        .font(.caption)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("Credits (Used/Total)"))
         .accessibilityValue(Text(verbatim: ratioText))

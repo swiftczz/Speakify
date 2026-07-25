@@ -34,29 +34,26 @@ struct PlayerBar: View {
     }
 
     var body: some View {
-        GlassEffectContainer(spacing: 16) {
-            HStack(spacing: 16) {
-                AudioStatusView(
-                    isActive: playback.isPlaying || viewModel.isGenerating,
-                    playback: playback
-                )
-                    .frame(height: audioStatusHeight)
+        HStack(spacing: 16) {
+            AudioStatusView(
+                isActive: playback.isPlaying || viewModel.isGenerating,
+                playback: playback
+            )
+                .frame(height: audioStatusHeight)
 
-                Text(viewModel.isGenerating ? "Generating" : playback.timeText)
-                    .font(.title3)
-                    .foregroundStyle(.primary)
-                    .monospacedDigit()
-                    .frame(width: timeWidth, alignment: .trailing)
+            Text(viewModel.isGenerating ? "Generating" : playback.timeText)
+                .font(.title3)
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+                .frame(width: timeWidth, alignment: .trailing)
 
-                PlaybackRateControl(settings: settings)
+            PlaybackRateControl(settings: settings)
 
-                playButton
+            playButton
 
-                downloadButton
-            }
-            .padding(.horizontal, 14)
-            .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
+            downloadButton
         }
+        .padding(.horizontal, 20)
         .task(id: playback.isPlaying) {
             while playback.isPlaying, Task.isCancelled == false {
                 try? await Task.sleep(for: .milliseconds(100))
@@ -73,14 +70,7 @@ struct PlayerBar: View {
     private var playButton: some View {
         Button {
             playFeedback += 1
-
-            if viewModel.isGenerating {
-                viewModel.cancelGeneration()
-            } else if playback.isPlaying {
-                viewModel.stop()
-            } else {
-                Task { await viewModel.play(modelContext: modelContext) }
-            }
+            Task { await viewModel.togglePlayPause(modelContext: modelContext) }
         } label: {
             Image(systemName: playButtonSymbol)
                 .contentTransition(.symbolEffect(.replace))
@@ -110,7 +100,7 @@ struct PlayerBar: View {
             Image(systemName: "arrow.down")
                 .symbolEffect(.bounce, value: reduceMotion ? 0 : downloadFeedback)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.glass)
         .buttonBorderShape(.circle)
         .controlSize(.large)
         .disabled(viewModel.canGenerate == false)
@@ -166,7 +156,7 @@ private struct AudioStatusView: View {
             }
             .controlSize(.small)
             .frame(minWidth: minimumSliderWidth)
-            .disabled(playback.isPlaying == false)
+            .disabled(playback.canSeek == false)
             .accessibilityLabel(Text("Playback position"))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -189,7 +179,7 @@ private struct PlaybackRateControl: View {
                 .monospacedDigit()
                 .frame(width: labelWidth)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.glass)
         .buttonBorderShape(.capsule)
         .controlSize(.large)
         .help(Text("Playback speed"))

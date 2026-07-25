@@ -3,24 +3,23 @@ import SwiftUI
 struct MainWorkspace: View {
     let settings: AppSettings
     @Bindable var viewModel: SpeechViewModel
-    @ScaledMetric private var transportHeight: CGFloat = 80
 
     var body: some View {
-        VStack(spacing: 18) {
-            EditorCard(viewModel: viewModel)
-                .frame(maxHeight: .infinity)
-
-            PlayerBar(
-                settings: settings,
-                viewModel: viewModel,
-                playback: viewModel.playback
-            )
-                .frame(height: transportHeight)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
-        .background(.background)
-        .navigationTitle(Text(verbatim: L10n.string("Text to Speech", defaultValue: "Text to Speech")))
+        EditorCard(viewModel: viewModel)
+            .frame(maxHeight: .infinity)
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+            .background(.background)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                PlayerBar(
+                    settings: settings,
+                    viewModel: viewModel,
+                    playback: viewModel.playback
+                )
+                    .padding(.vertical, 10)
+                    .background(.bar)
+            }
+            .navigationTitle(Text(verbatim: L10n.string("Text to Speech", defaultValue: "Text to Speech")))
     }
 }
 
@@ -52,7 +51,7 @@ private struct EditorCard: View {
             .padding(.bottom, 18)
         }
         .frame(minHeight: minimumHeight)
-        .background(.background.secondary, in: ConcentricRectangle())
+        .background(.background.secondary, in: ConcentricRectangle(corners: .concentric(minimum: 10)))
     }
 }
 

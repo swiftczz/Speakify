@@ -33,6 +33,7 @@ struct HistoryPanel: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .overlay {
             if groupedHistory.isEmpty {
                 emptyState

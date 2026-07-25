@@ -4,9 +4,8 @@ package struct SpeechCommandActions {
     var canGenerate: Bool
     var isGenerating: Bool
     var isPlaying: Bool
-    var play: () -> Void
-    var stop: () -> Void
-    var cancel: () -> Void
+    var isPaused: Bool
+    var togglePlayPause: () -> Void
     var export: () -> Void
     var focusEditor: () -> Void
 
@@ -14,18 +13,16 @@ package struct SpeechCommandActions {
         canGenerate: Bool,
         isGenerating: Bool,
         isPlaying: Bool,
-        play: @escaping () -> Void,
-        stop: @escaping () -> Void,
-        cancel: @escaping () -> Void,
+        isPaused: Bool,
+        togglePlayPause: @escaping () -> Void,
         export: @escaping () -> Void,
         focusEditor: @escaping () -> Void
     ) {
         self.canGenerate = canGenerate
         self.isGenerating = isGenerating
         self.isPlaying = isPlaying
-        self.play = play
-        self.stop = stop
-        self.cancel = cancel
+        self.isPaused = isPaused
+        self.togglePlayPause = togglePlayPause
         self.export = export
         self.focusEditor = focusEditor
     }
@@ -43,14 +40,7 @@ package struct SpeechCommands: Commands {
     package var body: some Commands {
         CommandMenu(Text(verbatim: L10n.string("Speech", defaultValue: "Speech"))) {
             Button {
-                guard let actions else { return }
-                if actions.isGenerating {
-                    actions.cancel()
-                } else if actions.isPlaying {
-                    actions.stop()
-                } else {
-                    actions.play()
-                }
+                actions?.togglePlayPause()
             } label: {
                 Text(verbatim: playCommandTitle)
             }
@@ -82,7 +72,10 @@ package struct SpeechCommands: Commands {
             return L10n.string("Cancel Generation", defaultValue: "Cancel Generation")
         }
         if actions?.isPlaying == true {
-            return L10n.string("Stop", defaultValue: "Stop")
+            return L10n.string("Pause", defaultValue: "Pause")
+        }
+        if actions?.isPaused == true {
+            return L10n.string("Resume", defaultValue: "Resume")
         }
         return L10n.string("Play", defaultValue: "Play")
     }
@@ -91,6 +84,7 @@ package struct SpeechCommands: Commands {
         guard let actions else { return true }
         return actions.canGenerate == false
             && actions.isPlaying == false
+            && actions.isPaused == false
             && actions.isGenerating == false
     }
 }

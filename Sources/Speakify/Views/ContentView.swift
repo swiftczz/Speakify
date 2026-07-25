@@ -67,7 +67,11 @@ package struct ContentView: View {
                 }
         }
         .toolbar { toolbarContent }
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .onKeyPress(.space) {
+            Task { await viewModel.togglePlayPause(modelContext: modelContext) }
+            return .handled
+        }
         .focusedSceneValue(\.speechActions, speechActions)
         .task {
             viewModel.focusEditor()
@@ -98,9 +102,8 @@ package struct ContentView: View {
             canGenerate: viewModel.canGenerate,
             isGenerating: viewModel.isGenerating,
             isPlaying: viewModel.playback.isPlaying,
-            play: { Task { await viewModel.play(modelContext: modelContext) } },
-            stop: { viewModel.stop() },
-            cancel: { viewModel.cancelGeneration() },
+            isPaused: viewModel.playback.isPaused,
+            togglePlayPause: { Task { await viewModel.togglePlayPause(modelContext: modelContext) } },
             export: { Task { await viewModel.download(modelContext: modelContext) } },
             focusEditor: { viewModel.focusEditor() }
         )

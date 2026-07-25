@@ -46,6 +46,20 @@ final class AudioPlaybackService {
         player?.isPlaying ?? false
     }
 
+    var hasLoadedAudio: Bool {
+        player != nil
+    }
+
+    func pause() {
+        player?.pause()
+    }
+
+    func resume() {
+        guard let player else { return }
+        player.rate = playbackRate
+        player.play()
+    }
+
     func stop() {
         player?.stop()
         player = nil

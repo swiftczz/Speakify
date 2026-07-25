@@ -119,3 +119,5 @@
 "Sidebar" = "边栏";
 "Show Sidebar" = "显示边栏";
 "Hide Sidebar" = "隐藏边栏";
+"status.playback-paused" = "播放已暂停。";
+"Resume" = "继续";

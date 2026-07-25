@@ -49,6 +49,30 @@ final class PlaybackStore {
         audioPlayer.setPlaybackRate(rate)
     }
 
+    var isPaused: Bool {
+        isPlaying == false && audioPlayer.hasLoadedAudio
+    }
+
+    var canSeek: Bool {
+        duration > 0 && audioPlayer.hasLoadedAudio
+    }
+
+    func pause() {
+        guard isPlaying else { return }
+        currentTime = min(audioPlayer.currentTime, duration)
+        audioPlayer.pause()
+        isPlaying = false
+    }
+
+    func resume() {
+        guard isPaused else { return }
+        if currentTime >= duration {
+            seek(to: 0)
+        }
+        audioPlayer.resume()
+        isPlaying = true
+    }
+
     func seek(to time: TimeInterval) {
         let clampedTime = min(max(time, 0), duration)
         audioPlayer.seek(to: clampedTime)

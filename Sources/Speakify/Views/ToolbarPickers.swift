@@ -35,7 +35,6 @@ struct ServiceModelToolbarPicker: View {
             }
         }
         .labelsHidden()
-        .controlSize(.small)
         .frame(minWidth: 150, idealWidth: 200, maxWidth: 228)
         .help(Text("Speech service and model"))
         .accessibilityLabel("Speech service and model")
@@ -78,7 +77,6 @@ struct VoiceToolbarPicker: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
         .helpIfPresent(voiceHelp)
         .accessibilityLabel("Voice")
         .popover(isPresented: $isPresented, arrowEdge: .top) {
@@ -303,7 +301,6 @@ struct VoiceSettingsToolbarButton: View {
             Image(systemName: "slider.horizontal.3")
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
         .help(Text("Voice settings"))
         .accessibilityLabel("Voice settings")
         .popover(isPresented: $isPresented, arrowEdge: .top) {
