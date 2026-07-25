@@ -32,6 +32,29 @@ package enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// The window's light/dark appearance. `system` means the app follows the system
+/// setting, which is what macOS apps do by default and what this app did before the
+/// setting existed; the other two override it for this app alone.
+package enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
+    case system
+    case light
+    case dark
+
+    package var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .system:
+            // Shares the key the language picker uses for the same idea.
+            return "System Default"
+        case .light:
+            return "Light"
+        case .dark:
+            return "Dark"
+        }
+    }
+}
+
 @Observable
 package final class AppSettings {
     static let defaultDraftText = "The best way to improve listening is to hear natural English every day."
@@ -41,6 +64,10 @@ package final class AppSettings {
             defaults.set(appLanguage.rawValue, forKey: Keys.appLanguage)
             L10n.configure(language: appLanguage)
         }
+    }
+
+    package var appAppearance: AppAppearance {
+        didSet { defaults.set(appAppearance.rawValue, forKey: Keys.appAppearance) }
     }
 
     /// The active speech service. The provider-scoped values below (API key,
@@ -100,6 +127,10 @@ package final class AppSettings {
             rawValue: defaults.string(forKey: Keys.appLanguage) ?? ""
         ) ?? .system
         appLanguage = resolvedAppLanguage
+
+        appAppearance = AppAppearance(
+            rawValue: defaults.string(forKey: Keys.appAppearance) ?? ""
+        ) ?? .system
 
         let storedProviderID = defaults.string(forKey: Keys.providerID) ?? ""
         let providerID = TTSProviderRegistry.isKnown(storedProviderID)
@@ -223,6 +254,7 @@ package final class AppSettings {
 
     private enum Keys {
         static let appLanguage = "appLanguage"
+        static let appAppearance = "appAppearance"
         static let apiKey = "apiKey"
         static let downloadDirectoryPath = "downloadDirectoryPath"
         static let modelID = "modelID"

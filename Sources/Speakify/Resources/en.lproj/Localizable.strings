@@ -1,5 +1,6 @@
 "Text to Speech" = "Text to Speech";
 "Voices" = "Voices";
+"My Voices" = "My Voices";
 "Voice Cloning" = "Voice Cloning";
 "Voice Library" = "Voice Library";
 "Projects" = "Projects";
@@ -16,6 +17,9 @@
 "This removes selected local history records from this Mac." = "This removes selected local history records from this Mac.";
 "General" = "General";
 "App Language" = "App Language";
+"Appearance" = "Appearance";
+"Light" = "Light";
+"Dark" = "Dark";
 "System Default" = "System Default";
 "简体中文" = "简体中文";
 "English" = "English";
@@ -66,6 +70,7 @@
 "preview.add-key" = "Add this provider’s API key in Settings to preview voices";
 "preview.click-metered" = "Click to preview %@ — this synthesizes a short sample and uses credits";
 "preview.hover" = "Hover to preview %@";
+"preview.click" = "Click to preview %@";
 "preview.accessibility" = "Preview %@";
 "Auto detect" = "Auto detect";
 "Create a key at elevenlabs.io under Profile → API Keys." = "Create a key at elevenlabs.io under Profile → API Keys.";

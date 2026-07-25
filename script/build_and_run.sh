@@ -18,7 +18,8 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 INFO_PLIST_SOURCE="$ROOT_DIR/Support/Info.plist"
-ICON_SOURCE="$ROOT_DIR/Support/AppIcon.icns"
+ICON_SOURCE="$ROOT_DIR/Support/AppIcon.icon"
+ICON_BUILD_DIR="$ROOT_DIR/build/icon"
 
 # Version priority: SPEAKIFY_VERSION > most recent git tag (without the v
 # prefix) > 0.0.0-dev.
@@ -96,6 +97,27 @@ build_binary() {
   echo "$(swift build --show-bin-path "${build_args[@]}")/$APP_NAME"
 }
 
+# Compiles Support/AppIcon.icon. The artwork used to be drawn procedurally into a
+# flat .icns by script/generate-icon.swift — several hundred lines that hand-fitted
+# the system corner shape and painted the ambient shadow, base gradient, radial
+# glows and specular rim by hand. macOS 26 renders all of that itself from a layered
+# icon, so what is checked in now is the glyph and a fill colour, and this turns it
+# into the catalog the system reads.
+compile_icon() {
+  rm -rf "$ICON_BUILD_DIR"
+  mkdir -p "$ICON_BUILD_DIR"
+  echo "==> Compiling app icon" >&2
+  xcrun actool \
+    --output-format human-readable-text \
+    --app-icon AppIcon \
+    --target-device mac \
+    --platform macosx \
+    --minimum-deployment-target 26.0 \
+    --output-partial-info-plist "$ICON_BUILD_DIR/partial.plist" \
+    --compile "$ICON_BUILD_DIR" \
+    "$ICON_SOURCE" >/dev/null
+}
+
 package_app_from_binary() {
   local binary="$1"
   rm -rf "$APP_DIR"
@@ -105,9 +127,12 @@ package_app_from_binary() {
   chmod +x "$MACOS_DIR/$APP_NAME"
   cp "$INFO_PLIST_SOURCE" "$CONTENTS_DIR/Info.plist"
 
-  if [[ -f "$ICON_SOURCE" ]]; then
-    cp "$ICON_SOURCE" "$RESOURCES_DIR/AppIcon.icns"
-  fi
+  # Assets.car carries the layered icon macOS 26 renders the material, specular
+  # highlight and shadow from; the .icns beside it is the flat fallback actool emits
+  # for anything that cannot read the catalog.
+  compile_icon
+  cp "$ICON_BUILD_DIR/Assets.car" "$RESOURCES_DIR/Assets.car"
+  cp "$ICON_BUILD_DIR/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
   for localization_directory in "$ROOT_DIR"/Sources/Speakify/Resources/*.lproj; do
     cp -R "$localization_directory" "$RESOURCES_DIR/"
   done
@@ -168,10 +193,6 @@ create_dmg() {
   rm -rf "$staging_dir"
   echo "$dmg_path"
 }
-
-if [[ ! -f "$ICON_SOURCE" ]]; then
-  swift script/generate-icon.swift
-fi
 
 BINARY="$(build_binary)"
 package_app_from_binary "$BINARY"

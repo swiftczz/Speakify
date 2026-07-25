@@ -1,5 +1,6 @@
 "Text to Speech" = "文本转语音";
 "Voices" = "音色";
+"My Voices" = "我的音色";
 "Voice Cloning" = "声音克隆";
 "Voice Library" = "音色库";
 "Projects" = "项目";
@@ -16,6 +17,9 @@
 "This removes selected local history records from this Mac." = "这会从这台 Mac 删除所选的本地历史记录。";
 "General" = "通用";
 "App Language" = "应用语言";
+"Appearance" = "外观";
+"Light" = "浅色";
+"Dark" = "深色";
 "System Default" = "系统默认";
 "简体中文" = "简体中文";
 "English" = "English";
@@ -66,6 +70,7 @@
 "preview.add-key" = "请先在设置中添加当前提供商的 API Key，再试听音色";
 "preview.click-metered" = "点击试听 %@——会合成短音频并消耗额度";
 "preview.hover" = "悬停试听 %@";
+"preview.click" = "点击试听 %@";
 "preview.accessibility" = "试听 %@";
 "Auto detect" = "自动检测";
 "Create a key at elevenlabs.io under Profile → API Keys." = "请前往 elevenlabs.io 的“个人资料 → API Keys”创建密钥。";

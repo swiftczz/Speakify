@@ -25,6 +25,13 @@ package struct SettingsView: View {
                             .tag(language)
                     }
                 }
+
+                Picker("Appearance", selection: $settings.appAppearance) {
+                    ForEach(AppAppearance.allCases) { appearance in
+                        Text(LocalizedStringKey(appearance.titleKey))
+                            .tag(appearance)
+                    }
+                }
             } header: {
                 Text("General")
             } footer: {
@@ -123,6 +130,7 @@ package struct SettingsView: View {
 private struct APIKeyField: View {
     @Binding var text: String
     @State private var isRevealed = false
+    @ScaledMetric private var revealButtonSize: CGFloat = 18
     @FocusState private var focusedField: Field?
 
     private enum Field {
@@ -155,7 +163,7 @@ private struct APIKeyField: View {
             } label: {
                 Image(systemName: isRevealed ? "eye.slash" : "eye")
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 18, height: 18)
+                    .frame(width: revealButtonSize, height: revealButtonSize)
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)

@@ -1,36 +1,41 @@
 import SwiftUI
 
-/// The centre pane: the title, the text editor, and the transport bar below it.
+/// The centre pane: the text editor and the transport bar below it.
 struct MainWorkspace: View {
     let settings: AppSettings
     @Bindable var viewModel: SpeechViewModel
+    /// The transport bar holds a row of controls sized to their text, so its height has
+    /// to grow with the text rather than sit at a constant.
+    @ScaledMetric private var transportHeight: CGFloat = 80
 
     var body: some View {
         VStack(spacing: 18) {
-            Text("Text to Speech")
-                .font(.title2.bold())
-                .foregroundStyle(AppPalette.ink)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
             EditorCard(viewModel: viewModel)
-                .frame(minHeight: 320, maxHeight: .infinity)
+                .frame(maxHeight: .infinity)
 
             PlayerBar(
                 settings: settings,
                 viewModel: viewModel,
                 playback: viewModel.playback
             )
-                .frame(height: 80)
+                .frame(height: transportHeight)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
-        .background(AppPalette.contentBackground)
+        // The window background, one step above the editor card's surface. Both come
+        // from the same system hierarchy now, so the step between them is the system's
+        // to define rather than a pair of colours chosen to sit near each other.
+        .background(.background)
+        // The heading used to be a `Text` drawn at the top of this pane while the real
+        // window title was suppressed. It is the window's title; the toolbar shows it.
+        .navigationTitle("Text to Speech")
     }
 }
 
 private struct EditorCard: View {
     @Bindable var viewModel: SpeechViewModel
     @FocusState private var isEditorFocused: Bool
+    @ScaledMetric private var minimumHeight: CGFloat = 320
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -38,7 +43,6 @@ private struct EditorCard: View {
                 .font(.title3)
                 .lineSpacing(8)
                 .scrollContentBackground(.hidden)
-                .foregroundStyle(AppPalette.ink)
                 .focused($isEditorFocused)
                 .padding(22)
 
@@ -46,7 +50,7 @@ private struct EditorCard: View {
                 Text("\(viewModel.characterCount) / \(viewModel.characterLimit)")
                     .font(.body)
                     .monospacedDigit()
-                    .foregroundStyle(viewModel.isTextOverLimit ? Color.red : AppPalette.muted)
+                    .foregroundStyle(viewModel.isTextOverLimit ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
 
                 Spacer(minLength: 12)
 
@@ -55,31 +59,38 @@ private struct EditorCard: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 18)
         }
+        .frame(minHeight: minimumHeight)
         // Content, not chrome: a text surface stays opaque so the writing behind it
-        // never competes with the glass on the transport bar below.
-        .background(AppPalette.cardSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 1)
-        .shadow(color: .black.opacity(0.04), radius: 1, x: 0, y: 0)
-        .onAppear { isEditorFocused = true }
-        // The ⌘L menu command bumps a counter rather than reaching into this
-        // view's focus state, which lives too deep to expose as a focused value.
-        .onChange(of: viewModel.editorFocusRequests) { _, _ in
-            isEditorFocused = true
-        }
+        // never competes with the glass on the transport bar below. Opaque, but taken
+        // from the system's background hierarchy one step down from the window's own —
+        // it used to be two hand-mixed RGB values, right in the two appearances they
+        // were sampled in and nowhere else. Neither answered Increase Contrast, Reduce
+        // Transparency or a colour filter.
+        //
+        // The drop shadows went with them. A pair of stacked `.black` shadows is a web
+        // card idiom; in dark mode they are invisible noise, and macOS 26 separates
+        // content regions with a step in material rather than by casting them into the
+        // air. No border stands in for them either.
+        //
+        // `ConcentricRectangle` rather than a stated radius: the corner is derived from
+        // the container it sits in, so it stays concentric with the window instead of
+        // holding a constant 14 that only matched one window corner radius.
+        .background(.background.secondary, in: ConcentricRectangle())
     }
 }
 
 private struct GenerationStatusView: View {
     let viewModel: SpeechViewModel
+    @ScaledMetric private var maximumWidth: CGFloat = 420
 
-    private var foregroundColor: Color {
+    private var foregroundStyle: AnyShapeStyle {
         switch viewModel.visibleStatusTone {
         case .info:
-            return AppPalette.muted
+            return AnyShapeStyle(.secondary)
         case .success:
-            return .green
+            return AnyShapeStyle(.green)
         case .error:
-            return .red
+            return AnyShapeStyle(.red)
         }
     }
 
@@ -105,8 +116,8 @@ private struct GenerationStatusView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
-        .foregroundStyle(foregroundColor.opacity(0.82))
-        .frame(maxWidth: 420, alignment: .trailing)
+        .foregroundStyle(foregroundStyle)
+        .frame(maxWidth: maximumWidth, alignment: .trailing)
         .help(viewModel.visibleStatusMessage)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(

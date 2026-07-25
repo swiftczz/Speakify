@@ -12,6 +12,7 @@ package struct ContentView: View {
     @AppStorage("ui.sidebarVisible") private var isSidebarVisible = true
     @AppStorage("ui.historyVisible") private var isHistoryVisible = true
     @State private var showsHistoryRecoveryNotice = AppDataLocation.quarantinedHistoryStoreURL != nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     package init(settings: AppSettings) {
         self.settings = settings
@@ -43,53 +44,70 @@ package struct ContentView: View {
         }
     }
 
-    package var body: some View {
-        // Deliberately not a `NavigationSplitView`.
-        //
-        // That container refuses to hold a column at a stated width once space gets
-        // tight: `min:`, `ideal:`, `max:` pinned together, a `frame(minWidth:)` on the
-        // content, a smaller detail minimum — none of it stopped it from crushing both
-        // side panes and sliding their contents out past their own edges. Even with the
-        // arithmetic comfortably satisfied (258 + 460 + 310 inside a 1040pt window) the
-        // sidebar came out as a strip of bare "Soon" badges. Its only stable width was
-        // the one it chose.
-        //
-        // Laying the three panes out by hand costs the system sidebar material and the
-        // free toggle, and buys the behaviour this window actually wants: the side panes
-        // never move, and every pixel of a resize goes to the editor in the middle.
-        HStack(spacing: 0) {
-            if isSidebarVisible {
-                SidebarView(
-                    reportsQuota: viewModel.activeProviderReportsQuota,
-                    displayedQuota: displayedQuota
-                )
-                    .frame(width: 258)
-                    .transition(.move(edge: .leading))
-
-                Divider()
-            }
-
-            MainWorkspace(settings: settings, viewModel: viewModel)
-                .frame(minWidth: 460, maxWidth: .infinity)
-
-            if isHistoryVisible {
-                Divider()
-
-                HistoryPanel(onApply: { draft in
-                    Task { await viewModel.applyHistoryDraft(draft) }
-                })
-                    .frame(width: 310)
-                    .transition(.move(edge: .trailing))
-            }
+    /// The split view drives column visibility, but the choice has to outlive the
+    /// window, so the stored flag stays the source of truth and this projects it
+    /// into the type the container wants.
+    private var sidebarVisibility: Binding<NavigationSplitViewVisibility> {
+        Binding {
+            isSidebarVisible ? .all : .detailOnly
+        } set: { newValue in
+            isSidebarVisible = newValue != .detailOnly
         }
-        // The toolbar paints an opaque strip the full width of the window, which cut
-        // a white band across the top of the sidebar — the system split view never
-        // showed one because its sidebar material runs behind the toolbar. Hiding the
-        // toolbar's own background lets each pane's background reach the top instead.
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+    }
+
+    package var body: some View {
+        // This was a hand-laid-out `HStack` for a while, on the finding that a split
+        // view could not be held to a column width: the sidebar kept coming out as a
+        // strip of bare "Soon" badges with its labels clipped off the leading edge.
+        //
+        // The symptom was real, but the cause was not this container. It was the
+        // `frame(minWidth:)` the window put *around* it. A flex frame reports the width
+        // it was given as the subtree's minimum even when the subtree needs more, so a
+        // stated minimum below the split view's genuine one let the window shrink past
+        // what the columns could satisfy — and the overflow went off the leading edge,
+        // sidebar first. Widening the frame only moved the cliff; removing it fixed it.
+        // See the note in `SpeakifyApp`.
+        //
+        // Column widths belong on each column's own root view, as below.
+        NavigationSplitView(columnVisibility: sidebarVisibility) {
+            SidebarView(
+                reportsQuota: viewModel.activeProviderReportsQuota,
+                displayedQuota: displayedQuota
+            )
+                .navigationSplitViewColumnWidth(min: 220, ideal: 258, max: 360)
+        } detail: {
+            // A plain `frame`, not `navigationSplitViewColumnWidth`: the detail is the
+            // column that absorbs whatever the other two do not take, so stating an
+            // ideal for it only gives the split view a target to chase. It needs a
+            // floor and nothing else.
+            MainWorkspace(settings: settings, viewModel: viewModel)
+                .frame(minWidth: 460)
+                .inspector(isPresented: $isHistoryVisible) {
+                    HistoryPanel(onApply: { draft in
+                        Task { await viewModel.applyHistoryDraft(draft) }
+                    })
+                        .inspectorColumnWidth(min: 280, ideal: 310, max: 420)
+                }
+        }
         .toolbar { toolbarContent }
+        // Removes the hairline the toolbar draws along its bottom edge. It is not the
+        // titlebar separator — that is already `.none`, verified — but the edge of the
+        // toolbar's own shared backdrop, and this is the only thing that takes it off.
+        //
+        // It costs less than it sounds: each toolbar item keeps its own glass capsule,
+        // so what goes away is the strip behind them, not the material. An earlier pass
+        // removed this line on the theory that it was a workaround for the hand-laid-out
+        // panes and was flattening the toolbar. It was doing neither.
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .focusedSceneValue(\.speechActions, speechActions)
         .task {
+            // AppKit gives a new window's first responder to the first text field in
+            // its key loop, and the inspector's search field is it — which put the
+            // caret in the history filter rather than the editor the app exists to
+            // type in. Claiming it back here goes through the same request the ⌘L
+            // menu command uses.
+            viewModel.focusEditor()
+
             if viewModel.voices.isEmpty {
                 await viewModel.loadModelsAndVoices()
             }
@@ -124,47 +142,50 @@ package struct ContentView: View {
         )
     }
 
-    // Both pane toggles are declared here now. `NavigationSplitView` used to supply
-    // the leading one; laying the panes out by hand means owning it.
+    // The sidebar toggle is not declared here: `NavigationSplitView` supplies it, and
+    // declaring a second would put two of them side by side.
+    //
+    // Each control is its own `ToolbarItem`. They were once a single item wrapping an
+    // `HStack`, which welded them into one view: no per-control background, and —
+    // because the overflow menu moves whole items — nothing the system could relieve
+    // individually when the window narrowed. Declared separately, macOS groups them
+    // into shared backgrounds on its own; no `ToolbarSpacer` is involved, and adding
+    // one at `.principal` changed nothing.
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            Button {
-                withAnimation(.smooth(duration: 0.22)) {
-                    isSidebarVisible.toggle()
-                }
-            } label: {
-                Label {
-                    Text("Sidebar")
-                } icon: {
-                    Image(systemName: "sidebar.leading")
-                }
-            }
-            .help(
-                isSidebarVisible
-                    ? L10n.string("Hide Sidebar", defaultValue: "Hide Sidebar")
-                    : L10n.string("Show Sidebar", defaultValue: "Show Sidebar")
-            )
-        }
-
-        // One item wrapping an HStack, not a `ToolbarItemGroup`. With a group, the
-        // `if` around the voice-settings button shifted item identity and macOS
-        // silently dropped the voice picker from the toolbar entirely.
+        // Centred, where they have always been. A pass over this moved them to the
+        // leading edge on the theory that the principal slot drops whatever does not
+        // fit. It does not — the voice picker was disappearing because of a `Spacer` in
+        // its own label, which took it out at every placement equally.
         ToolbarItem(placement: .principal) {
-            HStack(spacing: 10) {
-                ServiceModelToolbarPicker(settings: settings, viewModel: viewModel)
-                VoiceToolbarPicker(viewModel: viewModel)
-                if viewModel.voiceSettingsCapabilities != nil {
-                    VoiceSettingsToolbarButton(viewModel: viewModel)
-                }
+            ServiceModelToolbarPicker(settings: settings, viewModel: viewModel)
+        }
+
+        ToolbarItem(placement: .principal) {
+            VoiceToolbarPicker(viewModel: viewModel)
+        }
+
+        // The item is always declared and the condition lives inside it, which is what
+        // keeps its identity stable. The `ToolbarItemGroup` attempt put the `if` around
+        // the item itself, shifting every following item's position until macOS dropped
+        // one. `ToolbarItem(id:)` is not the fix either: those are customizable-toolbar
+        // items and need `.toolbar(id:)` to render at all, so in a plain toolbar they
+        // simply go missing.
+        ToolbarItem(placement: .principal) {
+            if viewModel.voiceSettingsCapabilities != nil {
+                VoiceSettingsToolbarButton(viewModel: viewModel)
             }
         }
 
+        // Pushes the inspector toggle to the trailing edge, which works because the
+        // group above sits in the centred principal slot rather than in this one.
         ToolbarSpacer(.flexible, placement: .automatic)
 
         ToolbarItem(placement: .automatic) {
             Button {
-                withAnimation(.smooth(duration: 0.22)) {
+                // The pane still appears and disappears; it just does not slide there
+                // when the user has asked for less motion.
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
                     isHistoryVisible.toggle()
                 }
             } label: {

@@ -10,11 +10,14 @@ struct PlayerBar: View {
     let settings: AppSettings
     let viewModel: SpeechViewModel
     let playback: PlaybackStore
-    @State private var isHoveringDownloadButton = false
     /// Bumped on each press so the SF Symbol replays its bounce; the value itself
     /// is never read.
     @State private var playFeedback = 0
     @State private var downloadFeedback = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric private var timeWidth: CGFloat = 92
+    @ScaledMetric private var audioStatusHeight: CGFloat = 38
+    @ScaledMetric private var transportButtonSize: CGFloat = 28
 
     private var playButtonSymbol: String {
         if viewModel.isGenerating {
@@ -23,40 +26,50 @@ struct PlayerBar: View {
         return playback.isPlaying ? "pause.circle.fill" : "play.circle.fill"
     }
 
-    private var downloadContentsLabel: LocalizedStringKey {
+    private var downloadContentsDescription: String {
         let capabilities = viewModel.activeProvider.capabilities
-        guard capabilities.providesSubtitles else { return "Audio" }
+        guard capabilities.providesSubtitles else {
+            return L10n.string("Audio", defaultValue: "Audio")
+        }
         return capabilities.providesCharacterAlignment
-            ? "Audio + SRT subtitle"
-            : "Audio + estimated SRT subtitle"
+            ? L10n.string("Audio + SRT subtitle", defaultValue: "Audio + SRT subtitle")
+            : L10n.string(
+                "Audio + estimated SRT subtitle",
+                defaultValue: "Audio + estimated SRT subtitle"
+            )
     }
 
     var body: some View {
-        HStack(spacing: 16) {
-            AudioStatusView(
-                isActive: playback.isPlaying || viewModel.isGenerating,
-                playback: playback
-            )
-                .frame(height: 38)
+        // One glass surface for the whole transport, declared inside a container so
+        // every glass element in this region samples the scene together rather than
+        // each resolving on its own.
+        //
+        // The controls sitting on it are plain or bordered — never glass themselves.
+        // The speed button used to be `.buttonStyle(.glass)`, which put glass directly
+        // on glass: the two layers of refraction muddied whatever showed through and
+        // left both sets of specular highlights competing.
+        GlassEffectContainer(spacing: 16) {
+            HStack(spacing: 16) {
+                AudioStatusView(
+                    isActive: playback.isPlaying || viewModel.isGenerating,
+                    playback: playback
+                )
+                    .frame(height: audioStatusHeight)
 
-            Text(viewModel.isGenerating ? "Generating" : playback.timeText)
-                .font(.title3)
-                .foregroundStyle(AppPalette.ink)
-                .monospacedDigit()
-                .frame(width: 92, alignment: .trailing)
+                Text(viewModel.isGenerating ? "Generating" : playback.timeText)
+                    .font(.title3)
+                    .foregroundStyle(.primary)
+                    .monospacedDigit()
+                    .frame(width: timeWidth, alignment: .trailing)
 
-            PlaybackRateControl(settings: settings)
+                PlaybackRateControl(settings: settings)
 
-            playButton
+                playButton
 
-            downloadButton
-        }
-        .padding(.horizontal, 14)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
-        .overlay(alignment: .topTrailing) {
-            if isHoveringDownloadButton {
-                downloadDestinationTooltip
+                downloadButton
             }
+            .padding(.horizontal, 14)
+            .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
         }
         // Polls only while audio is actually playing; an always-on timer woke the
         // whole window ten times a second even when nothing was happening.
@@ -89,9 +102,9 @@ struct PlayerBar: View {
                 .font(.title)
                 .symbolRenderingMode(.monochrome)
                 .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: playFeedback)
-                .foregroundStyle(AppPalette.ink)
-                .frame(width: 28, height: 28)
+                .symbolEffect(.bounce, value: reduceMotion ? 0 : playFeedback)
+                .foregroundStyle(.primary)
+                .frame(width: transportButtonSize, height: transportButtonSize)
         }
         .buttonStyle(.plain)
         .disabled(
@@ -119,22 +132,17 @@ struct PlayerBar: View {
             Image(systemName: "arrow.down.circle.fill")
                 .font(.title)
                 .symbolRenderingMode(.monochrome)
-                .symbolEffect(.bounce, value: downloadFeedback)
-                .foregroundStyle(
-                    viewModel.canGenerate ? AppPalette.ink : AppPalette.ink.opacity(0.35)
-                )
-                .frame(width: 28, height: 28)
+                .symbolEffect(.bounce, value: reduceMotion ? 0 : downloadFeedback)
+                // `.disabled` below already dims this. Painting the disabled state by
+                // hand at 0.35 opacity both double-dimmed it and ignored whatever the
+                // system does for disabled controls under Increase Contrast.
+                .foregroundStyle(.primary)
+                .frame(width: transportButtonSize, height: transportButtonSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(viewModel.canGenerate == false)
-        .zIndex(isHoveringDownloadButton ? 1 : 0)
-        .onHover { isHovering in
-            withAnimation(.easeOut(duration: 0.16)) {
-                isHoveringDownloadButton = isHovering
-            }
-        }
-        .help(L10n.string("Export audio", defaultValue: "Export audio"))
+        .help(downloadHelp)
         .accessibilityLabel(Text("Export audio"))
         // Reveals what the last export actually produced. The URLs were already
         // being captured; until now nothing offered a way to reach them.
@@ -149,25 +157,18 @@ struct PlayerBar: View {
         }
     }
 
-    private var downloadDestinationTooltip: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(downloadContentsLabel)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppPalette.muted)
-
-            Text(settings.downloadDirectoryPath)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(AppPalette.ink)
-                .fixedSize(horizontal: true, vertical: false)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .fixedSize(horizontal: true, vertical: false)
-        .glassEffect(.regular, in: .rect(cornerRadius: 12, style: .continuous))
-        .padding(.trailing, 10)
-        .offset(y: -58)
-        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottomTrailing)))
-        .allowsHitTesting(false)
+    /// What the export will produce, and where it will land.
+    ///
+    /// A help tag rather than a hand-built overlay. This is hover information, which
+    /// on macOS is exactly what a help tag is for — and the overlay it replaces was a
+    /// second slab of glass floating over the first, positioned by a hardcoded
+    /// `offset(y: -58)` that only lined up at one type size and one bar height.
+    private var downloadHelp: String {
+        [
+            L10n.string("Export audio", defaultValue: "Export audio"),
+            downloadContentsDescription,
+            settings.downloadDirectoryPath
+        ].joined(separator: "\n")
     }
 }
 
@@ -178,6 +179,8 @@ private struct AudioStatusView: View {
     let isActive: Bool
     let playback: PlaybackStore
     @State private var scrubTime: TimeInterval?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric private var minimumSliderWidth: CGFloat = 90
 
     private var position: Binding<Double> {
         Binding(
@@ -190,8 +193,8 @@ private struct AudioStatusView: View {
         HStack(spacing: 10) {
             Image(systemName: isActive ? "waveform.circle.fill" : "waveform")
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(AppPalette.ink)
-                .symbolEffect(.pulse, isActive: isActive)
+                .foregroundStyle(.primary)
+                .symbolEffect(.pulse, isActive: isActive && reduceMotion == false)
 
             Slider(
                 value: position,
@@ -205,8 +208,11 @@ private struct AudioStatusView: View {
                 }
             }
             .controlSize(.small)
-            .tint(AppPalette.ink)
-            .frame(minWidth: 90)
+            // No `tint`. It was pinned to the label colour, which painted the filled
+            // half of the track near-black and threw away whatever accent the user
+            // picked in System Settings. A slider is one of the controls the accent
+            // colour exists for.
+            .frame(minWidth: minimumSliderWidth)
             .disabled(playback.isPlaying == false)
             .accessibilityLabel(Text("Playback position"))
         }
@@ -217,6 +223,8 @@ private struct AudioStatusView: View {
 private struct PlaybackRateControl: View {
     @Bindable var settings: AppSettings
     @State private var showsPopover = false
+    @ScaledMetric private var labelWidth: CGFloat = 76
+    @ScaledMetric private var popoverWidth: CGFloat = 260
 
     var body: some View {
         Button {
@@ -228,9 +236,13 @@ private struct PlaybackRateControl: View {
                     .monospacedDigit()
             }
             .font(.callout.weight(.semibold))
-            .frame(width: 76, height: 30)
+            .frame(width: labelWidth)
         }
-        .buttonStyle(.glass)
+        // Bordered, not `.glass`: this button sits on the transport bar's own glass,
+        // and a second glass layer on top of the first is the one combination the
+        // material is not meant to be used in.
+        .buttonStyle(.bordered)
+        .controlSize(.large)
         .help(L10n.string("Playback speed", defaultValue: "Playback speed"))
         .popover(isPresented: $showsPopover, attachmentAnchor: .rect(.bounds), arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 14) {
@@ -251,10 +263,10 @@ private struct PlaybackRateControl: View {
                     Text(verbatim: "2.0x")
                 }
                 .font(.caption.weight(.medium))
-                .foregroundStyle(AppPalette.muted)
+                .foregroundStyle(.secondary)
             }
             .padding(16)
-            .frame(width: 260)
+            .frame(width: popoverWidth)
         }
     }
 

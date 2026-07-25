@@ -1,9 +1,9 @@
-import AppKit
 import SwiftUI
 
 /// The window's left pane: navigation, the remaining-credit readout, and the
-/// Settings link. A plain `List` in the sidebar style, so row selection and hover
-/// still come from the system even though the pane is placed by hand.
+/// Settings link. A plain `List` in the sidebar style, sitting in the split
+/// view's sidebar column, so selection, hover and the Liquid Glass background all
+/// come from the system.
 struct SidebarView: View {
     let reportsQuota: Bool
     let displayedQuota: TTSQuota?
@@ -30,6 +30,11 @@ struct SidebarView: View {
         // and pinning a footer with `.safeAreaInset` laid that footer out against the
         // whole window, so it overflowed the column. The footer is a trailing section
         // instead; with seven fixed rows above it, nothing ever scrolls out of reach.
+        //
+        // Nothing paints a background here. In the split view's sidebar column the
+        // system supplies the material, and on macOS 26 that material is Liquid Glass:
+        // an `NSVisualEffectView` set to `.sidebar` used to stand in for it, which
+        // pinned the pane to the flat vibrancy of the previous design language.
         List(selection: $selection) {
             Section {
                 ForEach(primaryItems) { item in
@@ -48,40 +53,22 @@ struct SidebarView: View {
                     QuotaWidget(quota: displayedQuota)
                 }
 
+                // `.borderless`, not `.plain`. A plain button draws nothing at all,
+                // so this row alone had no hover and no pressed state while every row
+                // above it did — it read as something that had fallen out of the list.
                 SettingsLink {
                     Label {
                         Text("Settings")
                     } icon: {
                         Image(systemName: "gearshape")
                     }
+                    .contentShape(.rect)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
             }
         }
         .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        // Outside a `NavigationSplitView` the list no longer inherits the window's
-        // sidebar material, so it paints its own — and `ignoresSafeArea` carries that
-        // material up behind the toolbar. Without it the pane started below the
-        // toolbar and left a white strip across its top, which the system container
-        // never showed.
-        .background(SidebarMaterial().ignoresSafeArea())
     }
-}
-
-/// The genuine sidebar vibrancy. `.regularMaterial` reads noticeably greyer than a
-/// real sidebar, and the window-background colour is flat, so this uses the same
-/// AppKit material the system container would have supplied.
-private struct SidebarMaterial: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .sidebar
-        view.blendingMode = .behindWindow
-        view.state = .followsWindowActiveState
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 private struct NavItem: Identifiable {
@@ -99,32 +86,25 @@ private struct SidebarRow: View {
     let item: NavItem
 
     var body: some View {
-        // The `Spacer` has to sit outside the `Label`, not inside its title. Nested
-        // in the title it made the label greedy for width, and a squeezed sidebar
-        // then overflowed its column to the *leading* side — icons clipped away and
-        // "Text to Speech" rendered as "xt to Speech" — instead of truncating.
-        HStack(spacing: 8) {
-            Label {
-                Text(LocalizedStringKey(item.title))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            } icon: {
-                Image(systemName: item.icon)
-            }
-
-            Spacer(minLength: 4)
-
-            if let badge = item.badge {
-                Text(LocalizedStringKey(badge))
-                    .font(.caption)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(.quaternary, in: Capsule())
-                    .layoutPriority(1)
-            }
+        // `.badge` and `.disabled`, not a hand-drawn capsule and a hand-set opacity.
+        // The list places the badge, styles it, flips it for the selected row and dims
+        // the whole row when disabled — all of which the `HStack` + `Capsule` +
+        // `.opacity(0.52)` this replaces had to approximate, and did not get right in
+        // the selected state.
+        Label {
+            Text(LocalizedStringKey(item.title))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        } icon: {
+            Image(systemName: item.icon)
         }
+        .badge(item.badge.map { Text(LocalizedStringKey($0)) })
+        // `.disabled` stops the row being chosen but does not dim it in a sidebar list,
+        // so the unavailable rows read as available. `.secondary` is the system's own
+        // "less prominent" style — the `.opacity(0.52)` this replaces was a fixed
+        // fraction that ignored Increase Contrast.
+        .foregroundStyle(item.isAvailable ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
         .tag(item.id)
-        .opacity(item.isAvailable ? 1 : 0.52)
         .disabled(item.isAvailable == false)
     }
 }
