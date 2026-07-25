@@ -1,7 +1,8 @@
 import SwiftData
 import SwiftUI
 
-/// The right pane: past generations, grouped by day, searchable and deletable.
+/// The window's right pane: past generations, grouped by day, searchable and
+/// deletable.
 /// It takes only a callback rather than the view model, so playback progress
 /// ticking ten times a second cannot drag it into a re-render.
 struct HistoryPanel: View {
@@ -17,59 +18,44 @@ struct HistoryPanel: View {
     @State private var groupedHistory: [HistorySectionData] = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("History")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundStyle(AppPalette.ink)
-
-                Spacer()
-
-                Button {
-                    showsDeleteConfirmation = true
-                } label: {
-                    Image(systemName: "trash")
-                        .frame(width: 28, height: 28)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if groupedHistory.isEmpty {
+                    Text("No history")
+                        .font(.body)
+                        .foregroundStyle(AppPalette.muted)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 24)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(selectedHistoryIDs.isEmpty ? AppPalette.muted.opacity(0.45) : AppPalette.ink)
-                .disabled(selectedHistoryIDs.isEmpty)
-                .help(
-                    L10n.string(
-                        "Delete selected history",
-                        defaultValue: "Delete selected history"
+
+                ForEach(groupedHistory) { section in
+                    HistorySection(
+                        section: section,
+                        selectedHistoryIDs: $selectedHistoryIDs,
+                        onApply: onApply
                     )
-                )
-            }
-            .padding(.top, 34)
-
-            searchField
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    if groupedHistory.isEmpty {
-                        Text("No history")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundStyle(AppPalette.muted)
-                            .padding(.top, 12)
-                    }
-
-                    ForEach(groupedHistory) { section in
-                        HistorySection(
-                            section: section,
-                            selectedHistoryIDs: $selectedHistoryIDs,
-                            onApply: onApply
-                        )
-                    }
                 }
             }
-            .scrollIndicators(.hidden)
-
-            Spacer(minLength: 0)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 22)
         }
-        .padding(.horizontal, 18)
-        .padding(.bottom, 22)
-        .background(AppPalette.contentBackground)
+        .scrollIndicators(.hidden)
+        // Width is set by the owning `HStack` in `ContentView`, not here. This panel
+        // clips its trailing edge rather than reflowing when it is narrowed — the
+        // delete button goes first, then each row's duration — so its width is fixed
+        // and nothing is allowed to negotiate it away.
+        //
+        // `ignoresSafeArea` matches the sidebar: the background reaches up behind the
+        // toolbar, so this pane's leading divider runs the window's full height rather
+        // than starting halfway down.
+        .background(AppPalette.contentBackground.ignoresSafeArea())
+        // `.searchable` and `.toolbar` were tried here first: inside an inspector
+        // both escape into the *window* toolbar, so the search field kept sitting
+        // next to the service picker — and it stole enough width there to push the
+        // voice picker out of the toolbar entirely. The panel owns its own header.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            panelHeader
+        }
         .onAppear(perform: rebuildGroupedHistory)
         .onChange(of: historyRecords) { _, _ in rebuildGroupedHistory() }
         .onChange(of: searchText) { _, _ in rebuildGroupedHistory() }
@@ -87,19 +73,47 @@ struct HistoryPanel: View {
         }
     }
 
-    private var searchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(AppPalette.muted)
-            TextField("Search history", text: $searchText)
-                .font(.system(size: 13, weight: .regular))
-                .textFieldStyle(.plain)
+    private var panelHeader: some View {
+        HStack(spacing: 8) {
+            TextField(text: $searchText) {
+                Text("Search history")
+            }
+            .textFieldStyle(.roundedBorder)
+            // A rounded-border field will not shrink below its natural width on its
+            // own, and at the column's narrow end it pushed the delete button off
+            // the trailing edge. This lets the field yield instead.
+            .frame(minWidth: 40)
+            .accessibilityLabel(Text("Search history"))
+
+            if searchText.isEmpty == false {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Clear search"))
+            }
+
+            Button {
+                showsDeleteConfirmation = true
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .disabled(selectedHistoryIDs.isEmpty)
+            .help(
+                L10n.string(
+                    "Delete selected history",
+                    defaultValue: "Delete selected history"
+                )
+            )
+            .accessibilityLabel(Text("Delete selected history"))
         }
         .padding(.horizontal, 14)
-        .frame(height: 36)
-        .background(AppPalette.controlBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 1)
-        .shadow(color: .black.opacity(0.04), radius: 1, x: 0, y: 0)
+        .padding(.vertical, 10)
+        .background(.bar)
     }
 
     private func rebuildGroupedHistory() {
@@ -169,7 +183,7 @@ private struct HistorySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(section.title)
+            Text(verbatim: section.title)
                 .font(.caption)
                 .foregroundStyle(AppPalette.muted)
                 .padding(.top, 14)
@@ -204,24 +218,27 @@ private struct HistoryRow: View {
     let item: SpeechHistoryRecord
     let isSelected: Bool
     let onApply: () -> Void
-    @State private var isApplying = false
+    /// Bumped on each press so the symbol replays its bounce. Replaces a pair of
+    /// spring animations driven by an uncancellable `asyncAfter`.
+    @State private var applyFeedback = 0
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                .font(.system(size: 13, weight: .regular))
+                .font(.body)
                 .foregroundStyle(isSelected ? AppPalette.ink : AppPalette.muted.opacity(0.55))
+                .contentTransition(.symbolEffect(.replace))
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 7) {
-                Text(item.preview)
-                    .font(.system(size: 13, weight: .regular))
+                Text(verbatim: item.preview)
+                    .font(.body)
                     .foregroundStyle(AppPalette.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Text(item.voiceName)
-                    .font(.system(size: 12, weight: .regular))
+                Text(verbatim: item.voiceName)
+                    .font(.callout)
                     .foregroundStyle(AppPalette.muted)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -229,27 +246,20 @@ private struct HistoryRow: View {
 
             Spacer()
 
-            Text(item.durationText)
-                .font(.system(size: 12, weight: .regular))
+            Text(verbatim: item.durationText)
+                .font(.callout)
                 .monospacedDigit()
                 .foregroundStyle(AppPalette.muted)
 
             Button {
-                withAnimation(.spring(response: 0.2, dampingFraction: 0.5)) {
-                    isApplying = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
-                        isApplying = false
-                    }
-                }
+                applyFeedback += 1
                 onApply()
             } label: {
                 Image(systemName: "arrow.uturn.backward.circle.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(isApplying ? AppPalette.accent : AppPalette.ink)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppPalette.ink)
+                    .symbolEffect(.bounce, value: applyFeedback)
                     .frame(width: 24, height: 24)
-                    .scaleEffect(isApplying ? 1.4 : 1.0)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -259,6 +269,7 @@ private struct HistoryRow: View {
                     defaultValue: "Restore to editor"
                 )
             )
+            .accessibilityLabel(Text("Restore to editor"))
         }
         .padding(.vertical, 8)
         .frame(minHeight: 64)

@@ -29,6 +29,13 @@ final class AudioPlaybackService {
         player?.rate = playbackRate
     }
 
+    /// Moves the playhead without interrupting playback, so a listener can replay
+    /// the sentence they just missed.
+    func seek(to time: TimeInterval) {
+        guard let player else { return }
+        player.currentTime = min(max(time, 0), player.duration)
+    }
+
     var currentTime: TimeInterval {
         guard let player else { return 0 }
         return min(max(player.currentTime, 0), player.duration)

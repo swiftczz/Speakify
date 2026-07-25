@@ -21,10 +21,7 @@ let package = Package(
         .executableTarget(
             name: "SpeakifyApp",
             dependencies: ["Speakify"],
-            path: "Sources/SpeakifyApp",
-            resources: [
-                .process("Resources")
-            ]
+            path: "Sources/SpeakifyApp"
         ),
         .testTarget(
             name: "SpeakifyTests",

@@ -18,7 +18,7 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 INFO_PLIST_SOURCE="$ROOT_DIR/Support/Info.plist"
-ICON_SOURCE="$ROOT_DIR/Sources/Speakify/Resources/AppIcon.icns"
+ICON_SOURCE="$ROOT_DIR/Support/AppIcon.icns"
 
 # Version priority: SPEAKIFY_VERSION > most recent git tag (without the v
 # prefix) > 0.0.0-dev.
@@ -36,12 +36,17 @@ CLEAN_BUILD=false
 SIGN_APP=true
 NOTARIZE_APP=false
 MAKE_DMG=false
+# Debug builds exist so the development loop still produces a real .app. A bare
+# `swift run` binary is not a bundle, so it has no Contents/Resources: the language
+# picker silently does nothing, and Settings, Now Playing and the media keys are all
+# degraded. Building the bundle is the only way to exercise what ships.
+CONFIGURATION="release"
 # Empty means a native single-arch release build, matching the historical
 # default that CI and the README rely on.
 ARCH=""
 
 usage() {
-  echo "Usage: script/build_and_run.sh [--arch <universal|arm64|x86_64>] [--dmg] [--unsigned] [--notarize] [--clean]"
+  echo "Usage: script/build_and_run.sh [--debug] [--arch <universal|arm64|x86_64>] [--dmg] [--unsigned] [--notarize] [--clean]"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -53,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     --arch=*)
       ARCH="${1#--arch=}"
       ;;
+    --debug)    CONFIGURATION="debug" ;;
     --dmg)      MAKE_DMG=true ;;
     --unsigned) SIGN_APP=false ;;
     --notarize) NOTARIZE_APP=true ;;
@@ -78,14 +84,14 @@ esac
 # One argument vector drives both the build and the bin-path lookup, so the
 # packaged binary always comes from exactly what we just compiled.
 build_binary() {
-  local build_args=(-c release --scratch-path build)
+  local build_args=(-c "$CONFIGURATION" --scratch-path build)
   case "$ARCH" in
     universal) build_args+=(--arch arm64 --arch x86_64) ;;
     arm64)     build_args+=(--arch arm64) ;;
     x86_64)    build_args+=(--arch x86_64) ;;
   esac
 
-  echo "==> Building ${ARCH:-native} (version $SPEAKIFY_VERSION)" >&2
+  echo "==> Building ${ARCH:-native} $CONFIGURATION (version $SPEAKIFY_VERSION)" >&2
   swift build "${build_args[@]}" >&2
   echo "$(swift build --show-bin-path "${build_args[@]}")/$APP_NAME"
 }
@@ -102,7 +108,7 @@ package_app_from_binary() {
   if [[ -f "$ICON_SOURCE" ]]; then
     cp "$ICON_SOURCE" "$RESOURCES_DIR/AppIcon.icns"
   fi
-  for localization_directory in "$ROOT_DIR"/Sources/SpeakifyApp/Resources/*.lproj; do
+  for localization_directory in "$ROOT_DIR"/Sources/Speakify/Resources/*.lproj; do
     cp -R "$localization_directory" "$RESOURCES_DIR/"
   done
 

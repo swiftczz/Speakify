@@ -23,10 +23,16 @@ final class SpeechViewModel {
 
     var text: String {
         didSet {
+            trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
             scheduleDraftSave()
             invalidateSpeechCache()
         }
     }
+    /// Cached rather than computed: `canGenerate`, `isTextOverLimit` and
+    /// `estimatedCreditCost` all read it, and the transport bar re-evaluates them
+    /// ten times a second while audio plays. Trimming a draft that can run to
+    /// 40,000 characters that often is pure waste.
+    private(set) var trimmedText: String
     var models: [TTSModel] = []
     var voices: [TTSVoice] = []
     private(set) var publicVoiceIDs = Set<String>()
@@ -58,6 +64,9 @@ final class SpeechViewModel {
     )
     private(set) var statusTone: StatusTone = .info
     var downloadFeedback: DownloadFeedback?
+    /// Bumped by the ⌘L menu command. The editor watches it and takes focus; the
+    /// count itself carries no meaning.
+    private(set) var editorFocusRequests = 0
     var quota: TTSQuota?
     private(set) var quotaScopeIdentifier: String?
     var quotaStatusMessage: String?
@@ -87,6 +96,10 @@ final class SpeechViewModel {
     @ObservationIgnored private let catalogCacheStore: VoiceCatalogCacheStore
     @ObservationIgnored private let exportStore: SpeechExportStore
     @ObservationIgnored private let historyStore: SpeechHistoryStore
+    @ObservationIgnored private let nowPlaying = NowPlayingController()
+    /// Remembered from the last `play`, so a media-key replay can still write history.
+    /// The remote commands arrive from AppKit with no SwiftUI environment attached.
+    @ObservationIgnored private var nowPlayingModelContext: ModelContext?
     private let apiKeyDebounceInterval: Duration = .milliseconds(800)
     /// Long enough that a burst of typing writes once, short enough that the draft
     /// survives a crash moments after the user stops.
@@ -110,6 +123,8 @@ final class SpeechViewModel {
     ) {
         self.settings = settings
         self.text = settings.draftText
+        // `didSet` does not run during initialization, so seed the cache here.
+        self.trimmedText = settings.draftText.trimmingCharacters(in: .whitespacesAndNewlines)
         self.providers = providers
         self.playback = playback
         self.cacheStore = cacheStore
@@ -158,7 +173,13 @@ final class SpeechViewModel {
     }
 
     var isTextOverLimit: Bool {
-        trimmedText.count > characterLimit
+        characterCount > characterLimit
+    }
+
+    /// What the editor's counter shows. Deliberately the trimmed length, so the
+    /// number and the over-limit warning describe the same text the provider is sent.
+    var characterCount: Int {
+        trimmedText.count
     }
 
     var characterLimit: Int {
@@ -167,10 +188,6 @@ final class SpeechViewModel {
 
     var voiceSettingsCapabilities: TTSVoiceSettingsCapabilities? {
         activeProvider.capabilities.voiceSettings
-    }
-
-    private var trimmedText: String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var visibleStatusMessage: String {
@@ -183,7 +200,7 @@ final class SpeechViewModel {
 
     var estimatedCreditCost: Int {
         activeProvider.capabilities.estimatedCreditCost(
-            characterCount: trimmedText.count,
+            characterCount: characterCount,
             modelID: settings.modelID
         )
     }
@@ -369,6 +386,7 @@ final class SpeechViewModel {
     }
 
     func play(modelContext: ModelContext) async {
+        nowPlayingModelContext = modelContext
         guard canGenerate else {
             updateStatus(validationMessage(), tone: .error)
             return
@@ -381,6 +399,7 @@ final class SpeechViewModel {
                 rate: settings.playbackRate,
                 fileExtension: speech.fileExtension
             )
+            publishNowPlaying(for: speech, duration: duration)
             updateStatus(
                 L10n.format(
                     "status.playing",
@@ -421,15 +440,41 @@ final class SpeechViewModel {
 
     func refreshPlaybackProgress() {
         if playback.refresh() {
+            nowPlaying.clear()
             finishPlayback()
+        } else {
+            nowPlaying.updateElapsed(playback.currentTime)
         }
     }
 
     func stop() {
         playback.stop()
+        nowPlaying.clear()
         updateStatus(
             L10n.string("status.playback-stopped", defaultValue: "Playback stopped."),
             tone: .info
+        )
+    }
+
+    /// Asks the editor to take focus (⌘L).
+    func focusEditor() {
+        editorFocusRequests += 1
+    }
+
+    private func publishNowPlaying(for speech: GeneratedSpeech, duration: TimeInterval) {
+        nowPlaying.configure(
+            onPlay: { [weak self] in
+                guard let self, let modelContext = self.nowPlayingModelContext else { return }
+                Task { await self.play(modelContext: modelContext) }
+            },
+            onStop: { [weak self] in self?.stop() }
+        )
+        nowPlaying.update(
+            title: NowPlayingController.title(for: speech.request.text),
+            voiceName: speech.request.voice.displayName,
+            duration: duration,
+            elapsed: 0,
+            rate: settings.playbackRate
         )
     }
 
@@ -471,7 +516,9 @@ final class SpeechViewModel {
                 audioURL: result.audioURL,
                 subtitleURL: result.subtitleURL
             )
-            try historyStore.record(
+            // The files are already on disk at this point, so a failed history write
+            // must not report the export itself as failed. Same policy as `play`.
+            try? historyStore.record(
                 speech: speech,
                 providerID: settings.providerID,
                 apiKey: settings.apiKey,
@@ -720,17 +767,23 @@ final class SpeechViewModel {
         let resolvedAPIKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard resolvedAPIKey.isEmpty == false else { return }
 
+        let quotaBeforeGeneration = quota
         quotaRefreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
 
             // Usage updates can lag slightly behind synthesis completion. Poll at
-            // 0, 5, 10, 15, 20 and 25 seconds (not cumulatively increasing sleeps).
+            // 0, 5, 10, 15, 20 and 25 seconds (not cumulatively increasing sleeps),
+            // and stop as soon as the balance actually moves — the remaining
+            // requests would only re-fetch a number we already have.
             for attempt in 0..<6 {
                 if attempt > 0 {
                     try? await Task.sleep(for: .seconds(5))
                 }
                 guard Task.isCancelled == false else { return }
                 await self.refreshQuota(apiKey: resolvedAPIKey)
+                if let refreshedQuota = self.quota, refreshedQuota != quotaBeforeGeneration {
+                    return
+                }
             }
         }
     }

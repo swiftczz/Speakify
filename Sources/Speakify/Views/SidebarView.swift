@@ -1,13 +1,18 @@
+import AppKit
 import SwiftUI
 
-/// The left pane: navigation, the remaining-credit readout, and the Settings link.
+/// The window's left pane: navigation, the remaining-credit readout, and the
+/// Settings link. A plain `List` in the sidebar style, so row selection and hover
+/// still come from the system even though the pane is placed by hand.
 struct SidebarView: View {
     let reportsQuota: Bool
     let displayedQuota: TTSQuota?
-    @State private var isHoveringSettings = false
+    /// The only destination that exists today. Held in state so the row draws with
+    /// the system's real selection treatment rather than a hand-painted highlight.
+    @State private var selection: String? = "text-to-speech"
 
     private let primaryItems = [
-        NavItem(id: "text-to-speech", title: "Text to Speech", icon: "waveform", selected: true),
+        NavItem(id: "text-to-speech", title: "Text to Speech", icon: "waveform"),
         NavItem(id: "voices", title: "Voices", icon: "person.wave.2", badge: "Soon"),
         NavItem(id: "voice-cloning", title: "Voice Cloning", icon: "person.crop.circle.badge.plus", badge: "Soon"),
         NavItem(id: "voice-library", title: "Voice Library", icon: "books.vertical", badge: "Soon"),
@@ -20,67 +25,73 @@ struct SidebarView: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Spacer().frame(height: 14)
-
-            VStack(spacing: 5) {
+        // The List has to be the column's root view. Wrapping it in a VStack cost it
+        // the sidebar's leading inset — icons vanished and every label was clipped —
+        // and pinning a footer with `.safeAreaInset` laid that footer out against the
+        // whole window, so it overflowed the column. The footer is a trailing section
+        // instead; with seven fixed rows above it, nothing ever scrolls out of reach.
+        List(selection: $selection) {
+            Section {
                 ForEach(primaryItems) { item in
                     SidebarRow(item: item)
                 }
             }
 
-            Divider()
-                .padding(.trailing, 4)
-
-            VStack(spacing: 5) {
+            Section {
                 ForEach(secondaryItems) { item in
                     SidebarRow(item: item)
                 }
             }
 
-            Spacer(minLength: 20)
-
-            if reportsQuota {
-                QuotaWidget(quota: displayedQuota)
-                    .padding(.bottom, 8)
-            }
-
-            SettingsLink {
-                HStack(spacing: 14) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 16))
-                        .frame(width: 24)
-                    Text("Settings")
-                        .font(.system(size: 14, weight: .regular))
-                    Spacer()
+            Section {
+                if reportsQuota {
+                    QuotaWidget(quota: displayedQuota)
                 }
-                .padding(.horizontal, 16)
-                .frame(height: 48)
-                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                SettingsLink {
+                    Label {
+                        Text("Settings")
+                    } icon: {
+                        Image(systemName: "gearshape")
+                    }
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(AppPalette.controlBackground)
-                    .opacity(isHoveringSettings ? 1 : 0)
-            }
-            .onHover { isHoveringSettings = $0 }
         }
-        .padding(.horizontal, 22)
-        .padding(.bottom, 14)
-        .background(AppPalette.sidebarBackground)
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        // Outside a `NavigationSplitView` the list no longer inherits the window's
+        // sidebar material, so it paints its own — and `ignoresSafeArea` carries that
+        // material up behind the toolbar. Without it the pane started below the
+        // toolbar and left a white strip across its top, which the system container
+        // never showed.
+        .background(SidebarMaterial().ignoresSafeArea())
     }
+}
+
+/// The genuine sidebar vibrancy. `.regularMaterial` reads noticeably greyer than a
+/// real sidebar, and the window-background colour is flat, so this uses the same
+/// AppKit material the system container would have supplied.
+private struct SidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .sidebar
+        view.blendingMode = .behindWindow
+        view.state = .followsWindowActiveState
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 private struct NavItem: Identifiable {
     let id: String
     let title: String
     let icon: String
-    var selected = false
     var badge: String?
 
     var isAvailable: Bool {
-        selected || badge == nil
+        badge == nil
     }
 }
 
@@ -88,37 +99,33 @@ private struct SidebarRow: View {
     let item: NavItem
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: item.icon)
-                .font(.system(size: 17))
-                .frame(width: 24)
+        // The `Spacer` has to sit outside the `Label`, not inside its title. Nested
+        // in the title it made the label greedy for width, and a squeezed sidebar
+        // then overflowed its column to the *leading* side — icons clipped away and
+        // "Text to Speech" rendered as "xt to Speech" — instead of truncating.
+        HStack(spacing: 8) {
+            Label {
+                Text(LocalizedStringKey(item.title))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            } icon: {
+                Image(systemName: item.icon)
+            }
 
-            Text(LocalizedStringKey(item.title))
-                .font(.system(size: 14, weight: .regular))
-
-            Spacer()
+            Spacer(minLength: 4)
 
             if let badge = item.badge {
                 Text(LocalizedStringKey(badge))
                     .font(.caption)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(AppPalette.controlBackground.opacity(0.80), in: Capsule())
-                    .overlay {
-                        Capsule().stroke(AppPalette.stroke, lineWidth: 1)
-                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(.quaternary, in: Capsule())
+                    .layoutPriority(1)
             }
         }
-        .foregroundStyle(item.selected ? AppPalette.accent : AppPalette.ink)
+        .tag(item.id)
         .opacity(item.isAvailable ? 1 : 0.52)
-        .padding(.horizontal, 14)
-        .frame(height: 40)
-        .background {
-            if item.selected {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(AppPalette.selectedNav)
-            }
-        }
+        .disabled(item.isAvailable == false)
     }
 }
 
@@ -148,35 +155,29 @@ private struct QuotaWidget: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        // Stacked rather than one row: at the 200pt minimum sidebar width the label
+        // and the ratio could not share a line, and the label was clipped.
+        VStack(alignment: .leading, spacing: 4) {
             Text("Credits (Used/Total)")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(AppPalette.ink)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
-            Text(ratioText)
-                .font(.system(size: 12, weight: .regular))
-                .foregroundStyle(AppPalette.ink)
+            Text(verbatim: ratioText)
+                .font(.caption)
                 .monospacedDigit()
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule(style: .continuous)
-                        .fill(AppPalette.stroke.opacity(0.24))
-                        .overlay {
-                            Capsule(style: .continuous)
-                                .stroke(AppPalette.stroke.opacity(0.45), lineWidth: 0.5)
-                        }
-
-                    Capsule(style: .continuous)
-                        .fill(progressColor)
-                        .frame(width: geo.size.width * progressValue)
-                }
-            }
-            .frame(height: 3)
+            ProgressView(value: progressValue)
+                .tint(progressColor)
+                .controlSize(.small)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("Credits (Used/Total)"))
+        .accessibilityValue(Text(verbatim: ratioText))
     }
 }

@@ -32,8 +32,12 @@ Speakify 是一个基于 SwiftUI 和 SwiftData 构建的 macOS 文本转语音�
 ### 1. 运行开发版本
 
 ```bash
-swift run --scratch-path build Speakify
+script/build_and_run.sh --debug && open build/release/Speakify.app
 ```
+
+开发版本也要打成 `.app`：`swift run` 产出的是裸可执行文件而非 bundle，没有
+`Contents/Resources`，因此界面语言切换、Settings 场景、Now Playing 与媒体键都不生效，
+跑出来的东西和实际发布的不是一回事。仅做编译检查时 `swift build --scratch-path build` 即可。
 
 ### 2. 打包 `.app`
 

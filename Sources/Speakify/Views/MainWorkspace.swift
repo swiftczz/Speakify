@@ -8,7 +8,7 @@ struct MainWorkspace: View {
     var body: some View {
         VStack(spacing: 18) {
             Text("Text to Speech")
-                .font(.system(size: 20, weight: .bold))
+                .font(.title2.bold())
                 .foregroundStyle(AppPalette.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -30,19 +30,21 @@ struct MainWorkspace: View {
 
 private struct EditorCard: View {
     @Bindable var viewModel: SpeechViewModel
+    @FocusState private var isEditorFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             TextEditor(text: $viewModel.text)
-                .font(.system(size: 16, weight: .regular))
+                .font(.title3)
                 .lineSpacing(8)
                 .scrollContentBackground(.hidden)
                 .foregroundStyle(AppPalette.ink)
+                .focused($isEditorFocused)
                 .padding(22)
 
             HStack(alignment: .center, spacing: 16) {
-                Text("\(viewModel.text.count) / \(viewModel.characterLimit)")
-                    .font(.system(size: 13, weight: .regular))
+                Text("\(viewModel.characterCount) / \(viewModel.characterLimit)")
+                    .font(.body)
                     .monospacedDigit()
                     .foregroundStyle(viewModel.isTextOverLimit ? Color.red : AppPalette.muted)
 
@@ -53,9 +55,17 @@ private struct EditorCard: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 18)
         }
+        // Content, not chrome: a text surface stays opaque so the writing behind it
+        // never competes with the glass on the transport bar below.
         .background(AppPalette.cardSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 1)
         .shadow(color: .black.opacity(0.04), radius: 1, x: 0, y: 0)
+        .onAppear { isEditorFocused = true }
+        // The ⌘L menu command bumps a counter rather than reaching into this
+        // view's focus state, which lives too deep to expose as a focused value.
+        .onChange(of: viewModel.editorFocusRequests) { _, _ in
+            isEditorFocused = true
+        }
     }
 }
 
@@ -87,10 +97,11 @@ private struct GenerationStatusView: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: symbolName)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.caption2.weight(.semibold))
+                .contentTransition(.symbolEffect(.replace))
 
             Text(viewModel.visibleStatusMessage)
-                .font(.system(size: 11, weight: .medium))
+                .font(.caption.weight(.medium))
                 .lineLimit(1)
                 .truncationMode(.tail)
         }

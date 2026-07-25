@@ -54,6 +54,12 @@ final class PlaybackStore {
         audioPlayer.setPlaybackRate(rate)
     }
 
+    func seek(to time: TimeInterval) {
+        let clampedTime = min(max(time, 0), duration)
+        audioPlayer.seek(to: clampedTime)
+        currentTime = clampedTime
+    }
+
     /// Returns `true` exactly once when active playback reaches its end.
     func refresh() -> Bool {
         guard isPlaying else { return false }

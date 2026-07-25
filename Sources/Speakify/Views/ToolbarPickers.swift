@@ -38,7 +38,10 @@ struct ServiceModelToolbarPicker: View {
         }
         .labelsHidden()
         .controlSize(.small)
-        .frame(width: 228)
+        // Was a fixed 228. Together with the voice picker that overflowed the
+        // centred toolbar region, and macOS silently dropped the item that no
+        // longer fitted rather than shrinking anything.
+        .frame(minWidth: 150, idealWidth: 200, maxWidth: 228)
         .help(
             L10n.string(
                 "Speech service and model",
@@ -79,10 +82,10 @@ struct VoiceToolbarPicker: View {
                 Spacer(minLength: 0)
 
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-            .frame(width: 138, alignment: .leading)
+            .frame(minWidth: 96, idealWidth: 138, maxWidth: 138, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.bordered)
@@ -231,7 +234,7 @@ private struct VoiceOptionRow: View {
 
                     if isSelected {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.callout.weight(.semibold))
                             .foregroundStyle(.tint)
                     }
                 }

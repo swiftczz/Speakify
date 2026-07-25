@@ -44,8 +44,6 @@
 "Restore to editor" = "Restore to editor";
 "Show API key" = "Show API key";
 "Hide API key" = "Hide API key";
-"Show Sidebar" = "Show Sidebar";
-"Hide Sidebar" = "Hide Sidebar";
 "Show History" = "Show History";
 "Hide History" = "Hide History";
 "Service and model" = "Service and model";
@@ -101,3 +99,18 @@
 "status.loaded-cached-account" = "Loaded %1$lld public and %2$lld cached account voices. Account refresh failed: %3$@";
 "status.history-text-restored" = "History text restored to the editor.";
 "status.history-restored" = "History settings restored to the editor.";
+
+/* Menu bar and transport controls */
+"Speech" = "Speech";
+"Stop" = "Stop";
+"Pause" = "Pause";
+"Cancel Generation" = "Cancel Generation";
+"Export Audio…" = "Export Audio…";
+"Export audio" = "Export audio";
+"Focus Editor" = "Focus Editor";
+"Playback position" = "Playback position";
+"Show in Finder" = "Show in Finder";
+"Clear search" = "Clear search";
+"Sidebar" = "Sidebar";
+"Show Sidebar" = "Show Sidebar";
+"Hide Sidebar" = "Hide Sidebar";

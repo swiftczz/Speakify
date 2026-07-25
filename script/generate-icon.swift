@@ -20,7 +20,10 @@ private enum IconMetrics {
 }
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-let resources = root.appending(path: "Sources/Speakify/Resources", directoryHint: .isDirectory)
+// The icon is packaging input, not a bundled resource: `build_and_run.sh` copies it
+// straight into Contents/Resources, so keeping it out of Sources/ stops SwiftPM from
+// also embedding a megabyte of it in a resource bundle nothing reads.
+let resources = root.appending(path: "Support", directoryHint: .isDirectory)
 let iconset = resources.appending(path: "AppIcon.iconset", directoryHint: .isDirectory)
 
 try? FileManager.default.removeItem(at: iconset)
