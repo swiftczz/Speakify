@@ -13,6 +13,9 @@ enum AppPalette {
     static let sidebarBackground = Color(NSColor.windowBackgroundColor)
     static let contentBackground = Color(NSColor.controlBackgroundColor)
     static let controlBackground = Color(NSColor.controlColor)
+    /// A raised surface a hair off the window background: near-white in light mode,
+    /// a soft charcoal in dark. Deliberately a flat tone rather than a translucent
+    /// material, which read too gray for the cards.
     static let cardSurface = Color(NSColor(name: nil, dynamicProvider: { appearance in
         appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
             ? NSColor(white: 0.18, alpha: 1)

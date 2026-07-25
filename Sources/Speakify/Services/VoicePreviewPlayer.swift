@@ -1,5 +1,4 @@
 import AVFoundation
-import Combine
 import Foundation
 
 struct VoicePreviewConfiguration: Sendable {
@@ -29,10 +28,11 @@ struct VoicePreviewConfiguration: Sendable {
 /// Owned by one visible voice row. Updating a preview now invalidates only the
 /// previous/current row instead of every row in a large account catalog.
 @MainActor
-final class VoicePreviewRowState: ObservableObject {
-    @Published fileprivate(set) var isActive = false
-    @Published fileprivate(set) var isPlaying = false
-    @Published fileprivate(set) var errorMessage: String?
+@Observable
+final class VoicePreviewRowState {
+    fileprivate(set) var isActive = false
+    fileprivate(set) var isPlaying = false
+    fileprivate(set) var errorMessage: String?
 }
 
 /// Plays a provider-supplied sample when one exists; otherwise it asks the

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The centre pane: the title, the text editor, and the transport bar below it.
 struct MainWorkspace: View {
-    @ObservedObject var settings: AppSettings
+    let settings: AppSettings
     @Bindable var viewModel: SpeechViewModel
 
     var body: some View {

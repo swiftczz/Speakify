@@ -4,9 +4,9 @@ import SwiftUI
 /// The transport bar: progress, elapsed time, speed, play/cancel and download.
 struct PlayerBar: View {
     @Environment(\.modelContext) private var modelContext
-    @ObservedObject var settings: AppSettings
+    let settings: AppSettings
     let viewModel: SpeechViewModel
-    @ObservedObject var playback: PlaybackStore
+    let playback: PlaybackStore
     @State private var isAnimatingPlayButton = false
     @State private var isAnimatingDownloadButton = false
     @State private var isHoveringDownloadButton = false
@@ -242,7 +242,7 @@ private struct AudioStatusView: View {
 }
 
 private struct PlaybackRateControl: View {
-    @ObservedObject var settings: AppSettings
+    @Bindable var settings: AppSettings
     @State private var showsPopover = false
 
     var body: some View {

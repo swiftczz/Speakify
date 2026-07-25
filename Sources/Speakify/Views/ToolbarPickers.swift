@@ -3,7 +3,7 @@ import SwiftUI
 /// The toolbar's service + model picker. Service and model are chosen together so
 /// one menu covers "which engine, which voice quality" in a single step.
 struct ServiceModelToolbarPicker: View {
-    @ObservedObject var settings: AppSettings
+    let settings: AppSettings
     let viewModel: SpeechViewModel
 
     private var selection: Binding<ServiceModelSelection> {
@@ -179,7 +179,7 @@ private struct VoiceOptionRow: View {
     let previewPlayer: VoicePreviewPlayer
     let previewConfiguration: VoicePreviewConfiguration
     let onSelect: () -> Void
-    @StateObject private var previewState = VoicePreviewRowState()
+    @State private var previewState = VoicePreviewRowState()
     @State private var isHovered = false
     @State private var isPreviewButtonHovered = false
 

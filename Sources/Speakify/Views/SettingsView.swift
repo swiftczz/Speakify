@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 package struct SettingsView: View {
-    @ObservedObject var settings: AppSettings
+    @Bindable var settings: AppSettings
 
     private var activeCapabilities: TTSProviderCapabilities {
         TTSProviderRegistry.provider(withID: settings.providerID).capabilities

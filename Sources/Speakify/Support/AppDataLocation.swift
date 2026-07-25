@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import Synchronization
 
 package enum AppDataLocation {
     private static let rootDirectoryName = ".speakify"
@@ -58,7 +59,13 @@ package enum AppDataLocation {
 
     /// Set when a damaged history store had to be set aside at launch, so the UI can
     /// tell the user where the old file went instead of silently losing their history.
-    package nonisolated(unsafe) private(set) static var quarantinedHistoryStoreURL: URL?
+    /// Written once during launch and read from the main actor; a mutex keeps that
+    /// cross-context access defined without pinning the type to an actor.
+    private static let quarantinedHistoryStoreURLStorage = Mutex<URL?>(nil)
+
+    package static var quarantinedHistoryStoreURL: URL? {
+        quarantinedHistoryStoreURLStorage.withLock { $0 }
+    }
 
     /// Moves an unreadable store out of the way so a fresh one can be created. The
     /// old file is kept, never deleted — a corrupt store is still the user's data.
@@ -82,7 +89,7 @@ package enum AppDataLocation {
             }
         }
 
-        quarantinedHistoryStoreURL = quarantineURL
+        quarantinedHistoryStoreURLStorage.withLock { $0 = quarantineURL }
         return quarantineURL
     }
 

@@ -4,7 +4,7 @@ import Speakify
 
 @main
 struct SpeakifyApp: App {
-    @StateObject private var settings = AppSettings()
+    @State private var settings = AppSettings()
 
     private let historyModelContainer: ModelContainer = {
         let schema = Schema([SpeechHistoryRecord.self, SubscriptionQuotaSnapshot.self])

@@ -7,7 +7,7 @@ import SwiftUI
 package struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \SubscriptionQuotaSnapshot.updatedAt, order: .reverse) private var subscriptionSnapshots: [SubscriptionQuotaSnapshot]
-    @ObservedObject private var settings: AppSettings
+    private let settings: AppSettings
     @State private var viewModel: SpeechViewModel
     @AppStorage("ui.leftSidebarWidth") private var leftWidth = 258.0
     @AppStorage("ui.rightSidebarWidth") private var rightWidth = 310.0

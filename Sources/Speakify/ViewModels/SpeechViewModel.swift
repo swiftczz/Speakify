@@ -1,4 +1,3 @@
-import Combine
 import CryptoKit
 import Foundation
 import Observation
@@ -81,12 +80,14 @@ final class SpeechViewModel {
     /// observer skips the reload a provider switch has already performed.
     @ObservationIgnored private var lastCatalogSignature: String?
     @ObservationIgnored private var suppressNextProviderReload = false
-    @ObservationIgnored private var settingsCancellables = Set<AnyCancellable>()
+    /// Debounces the credential reload so typing or pasting an API key fires one
+    /// reload, not one per keystroke.
+    @ObservationIgnored private var credentialReloadTask: Task<Void, Never>?
     @ObservationIgnored private let cacheStore: SpeechCacheStore
     @ObservationIgnored private let catalogCacheStore: VoiceCatalogCacheStore
     @ObservationIgnored private let exportStore: SpeechExportStore
     @ObservationIgnored private let historyStore: SpeechHistoryStore
-    private let apiKeyDebounceInterval: DispatchQueue.SchedulerTimeType.Stride = .seconds(0.8)
+    private let apiKeyDebounceInterval: Duration = .milliseconds(800)
     /// Long enough that a burst of typing writes once, short enough that the draft
     /// survives a crash moments after the user stops.
     private let draftSaveDelay: Duration = .milliseconds(400)
@@ -127,6 +128,7 @@ final class SpeechViewModel {
         draftSaveTask?.cancel()
         quotaRefreshTask?.cancel()
         synthesisTask?.cancel()
+        credentialReloadTask?.cancel()
     }
 
     var activeProvider: any TTSProvider {
@@ -788,86 +790,109 @@ final class SpeechViewModel {
         await reloadCatalogForCredentialChange()
     }
 
-    private func observeSettingsChanges() {
-        settings.$appLanguage
-            .dropFirst()
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                // @Published emits before AppSettings' didSet persists the new
-                // language. Hop to the next MainActor turn so manual status strings
-                // resolve from the same language as SwiftUI's updated locale.
-                Task { @MainActor in
-                    self?.updateStatus(
-                        L10n.string(
-                            "status.language-updated",
-                            defaultValue: "Language updated."
-                        ),
-                        tone: .info
-                    )
-                }
-            }
-            .store(in: &settingsCancellables)
+    // MARK: - Settings reactions
+    //
+    // The view model owns its reaction to AppSettings, independent of any view's
+    // lifecycle, exactly as the old Combine subscriptions did. `withObservationTracking`
+    // replaces those subscriptions now that AppSettings is `@Observable`: it fires
+    // once when any tracked value is about to change, and we re-arm after handling
+    // it. Because this view model is `@MainActor` (hence `Sendable`), the `@Sendable`
+    // onChange closure captures only `[weak self]` and a `Sendable` snapshot.
 
-        settings.$providerID
-            .dropFirst()
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                if self?.suppressNextProviderReload == true {
-                    self?.suppressNextProviderReload = false
-                    return
-                }
-                Task { @MainActor in await self?.handleProviderSwitch() }
-            }
-            .store(in: &settingsCancellables)
+    /// The AppSettings values the view model reacts to, captured together so a
+    /// batch of changes (a provider switch rewrites several at once) is diffed in
+    /// a single pass.
+    private struct SettingsSnapshot: Equatable, Sendable {
+        var appLanguage: AppLanguage
+        var providerID: String
+        var apiKey: String
+        var modelID: String
+        var outputFormat: String
+        var languageCode: String
+        var playbackRate: Double
+    }
 
-        // The key field publishes on every keystroke; without debouncing, typing or
-        // pasting a key fires a full model/voice/quota reload per character.
-        settings.$apiKey
-            .dropFirst()
-            .removeDuplicates()
-            .debounce(for: apiKeyDebounceInterval, scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                Task { @MainActor in
-                    guard let self else { return }
-                    // A provider switch already reloaded with this exact state.
-                    guard self.lastCatalogSignature != self.catalogSignature else { return }
-                    await self.reloadCatalogForCredentialChange()
-                }
-            }
-            .store(in: &settingsCancellables)
+    private func currentSettingsSnapshot() -> SettingsSnapshot {
+        SettingsSnapshot(
+            appLanguage: settings.appLanguage,
+            providerID: settings.providerID,
+            apiKey: settings.apiKey,
+            modelID: settings.modelID,
+            outputFormat: settings.outputFormat,
+            languageCode: settings.languageCode,
+            playbackRate: settings.playbackRate
+        )
+    }
 
-        settings.$modelID
-            .dropFirst()
-            .sink { [weak self] _ in
-                Task { @MainActor in
-                    self?.applyVoiceFilterForSelectedModel()
-                    self?.invalidateSpeechCache()
-                }
+    private func observeSettingsChanges(previous: SettingsSnapshot? = nil) {
+        let baseline = previous ?? currentSettingsSnapshot()
+        withObservationTracking {
+            // Touching every reacted-to property registers it, so a change to any
+            // one re-arms this observer.
+            _ = settings.appLanguage
+            _ = settings.providerID
+            _ = settings.apiKey
+            _ = settings.modelID
+            _ = settings.outputFormat
+            _ = settings.languageCode
+            _ = settings.playbackRate
+        } onChange: { [weak self] in
+            // Fires during the willSet, before the value commits; hop to the next
+            // MainActor turn so the snapshot reads the settled values.
+            Task { @MainActor in
+                guard let self else { return }
+                let current = self.currentSettingsSnapshot()
+                self.reactToSettingsChange(from: baseline, to: current)
+                self.observeSettingsChanges(previous: current)
             }
-            .store(in: &settingsCancellables)
+        }
+    }
 
-        settings.$outputFormat
-            .dropFirst()
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.invalidateSpeechCache() }
+    private func reactToSettingsChange(from old: SettingsSnapshot, to new: SettingsSnapshot) {
+        if old.appLanguage != new.appLanguage {
+            updateStatus(
+                L10n.string("status.language-updated", defaultValue: "Language updated."),
+                tone: .info
+            )
+        }
+        if old.providerID != new.providerID {
+            // `applyHistoryDraft` performs the switch itself and sets
+            // `suppressNextProviderReload`, so honour that flag instead of switching twice.
+            if suppressNextProviderReload {
+                suppressNextProviderReload = false
+            } else {
+                Task { await handleProviderSwitch() }
             }
-            .store(in: &settingsCancellables)
+        }
+        if old.apiKey != new.apiKey {
+            scheduleCredentialReload()
+        }
+        if old.modelID != new.modelID {
+            applyVoiceFilterForSelectedModel()
+            invalidateSpeechCache()
+        }
+        if old.outputFormat != new.outputFormat {
+            invalidateSpeechCache()
+        }
+        if old.languageCode != new.languageCode {
+            invalidateSpeechCache()
+        }
+        if old.playbackRate != new.playbackRate {
+            playback.setPlaybackRate(new.playbackRate)
+        }
+    }
 
-        settings.$languageCode
-            .dropFirst()
-            .removeDuplicates()
-            .sink { [weak self] _ in
-                Task { @MainActor in self?.invalidateSpeechCache() }
-            }
-            .store(in: &settingsCancellables)
-
-        settings.$playbackRate
-            .dropFirst()
-            .removeDuplicates()
-            .sink { [weak self] playbackRate in
-                Task { @MainActor in self?.playback.setPlaybackRate(playbackRate) }
-            }
-            .store(in: &settingsCancellables)
+    /// Debounced: typing or pasting a key must not fire a full model/voice/quota
+    /// reload per character.
+    private func scheduleCredentialReload() {
+        credentialReloadTask?.cancel()
+        credentialReloadTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: self?.apiKeyDebounceInterval ?? .milliseconds(800))
+            guard let self, Task.isCancelled == false else { return }
+            // A provider switch already reloaded with this exact state.
+            guard self.lastCatalogSignature != self.catalogSignature else { return }
+            await self.reloadCatalogForCredentialChange()
+        }
     }
 
     private func finishPlayback() {

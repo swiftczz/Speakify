@@ -1,16 +1,16 @@
-import Combine
 import Foundation
 
 /// Owns the high-frequency playback state separately from the speech catalog.
 ///
 /// Progress changes ten times per second while audio is playing. Keeping those
-/// publications here prevents the editor, toolbar, voice catalog and sidebar from
-/// being invalidated for every playback tick.
+/// mutations here means only the views that read this store are invalidated for
+/// a playback tick — the editor, toolbar, voice catalog and sidebar are not.
 @MainActor
-final class PlaybackStore: ObservableObject {
-    @Published private(set) var isPlaying = false
-    @Published private(set) var currentTime: TimeInterval = 0
-    @Published private(set) var duration: TimeInterval = 0
+@Observable
+final class PlaybackStore {
+    private(set) var isPlaying = false
+    private(set) var currentTime: TimeInterval = 0
+    private(set) var duration: TimeInterval = 0
 
     private let audioPlayer: AudioPlaybackService
 

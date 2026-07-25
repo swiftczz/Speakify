@@ -1,4 +1,3 @@
-import Combine
 import Foundation
 
 package enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
@@ -33,10 +32,11 @@ package enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-package final class AppSettings: ObservableObject {
+@Observable
+package final class AppSettings {
     static let defaultDraftText = "The best way to improve listening is to hear natural English every day."
 
-    @Published package var appLanguage: AppLanguage {
+    package var appLanguage: AppLanguage {
         didSet {
             defaults.set(appLanguage.rawValue, forKey: Keys.appLanguage)
             L10n.configure(language: appLanguage)
@@ -46,7 +46,7 @@ package final class AppSettings: ObservableObject {
     /// The active speech service. The provider-scoped values below (API key,
     /// model, output format) swap alongside it, so each service keeps its own
     /// setup and switching back restores exactly what was configured before.
-    @Published var providerID: String {
+    var providerID: String {
         didSet {
             defaults.set(providerID, forKey: Keys.providerID)
             guard oldValue != providerID else { return }
@@ -54,27 +54,27 @@ package final class AppSettings: ObservableObject {
         }
     }
 
-    @Published var apiKey: String {
+    var apiKey: String {
         didSet { defaults.set(apiKey, forKey: Keys.scoped(Keys.apiKey, providerID)) }
     }
 
-    @Published var modelID: String {
+    var modelID: String {
         didSet { defaults.set(modelID, forKey: Keys.scoped(Keys.modelID, providerID)) }
     }
 
-    @Published var outputFormat: String {
+    var outputFormat: String {
         didSet { defaults.set(outputFormat, forKey: Keys.scoped(Keys.outputFormat, providerID)) }
     }
 
-    @Published var downloadDirectoryPath: String {
+    var downloadDirectoryPath: String {
         didSet { defaults.set(downloadDirectoryPath, forKey: Keys.downloadDirectoryPath) }
     }
 
-    @Published var languageCode: String {
+    var languageCode: String {
         didSet { defaults.set(languageCode, forKey: Keys.languageCode) }
     }
 
-    @Published var playbackRate: Double {
+    var playbackRate: Double {
         didSet {
             let normalizedRate = Self.normalizedPlaybackRate(playbackRate)
             guard playbackRate == normalizedRate else {
@@ -85,7 +85,7 @@ package final class AppSettings: ObservableObject {
         }
     }
 
-    @Published var draftText: String {
+    var draftText: String {
         didSet { defaults.set(draftText, forKey: Keys.draftText) }
     }
 
@@ -138,15 +138,6 @@ package final class AppSettings: ObservableObject {
     func apiKey(for providerID: String) -> String {
         guard providerID != self.providerID else { return apiKey }
         return defaults.string(forKey: Keys.scoped(Keys.apiKey, providerID)) ?? ""
-    }
-
-    func setAPIKey(_ key: String, for providerID: String) {
-        if providerID == self.providerID {
-            apiKey = key
-        } else {
-            objectWillChange.send()
-            defaults.set(key, forKey: Keys.scoped(Keys.apiKey, providerID))
-        }
     }
 
     func preferredVoiceID(providerID: String, apiKey: String) -> String? {
