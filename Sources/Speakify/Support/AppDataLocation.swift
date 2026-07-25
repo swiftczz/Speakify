@@ -57,18 +57,12 @@ package enum AppDataLocation {
         return directoryURL
     }
 
-    /// Set when a damaged history store had to be set aside at launch, so the UI can
-    /// tell the user where the old file went instead of silently losing their history.
-    /// Written once during launch and read from the main actor; a mutex keeps that
-    /// cross-context access defined without pinning the type to an actor.
     private static let quarantinedHistoryStoreURLStorage = Mutex<URL?>(nil)
 
     package static var quarantinedHistoryStoreURL: URL? {
         quarantinedHistoryStoreURLStorage.withLock { $0 }
     }
 
-    /// Moves an unreadable store out of the way so a fresh one can be created. The
-    /// old file is kept, never deleted — a corrupt store is still the user's data.
     @discardableResult
     package static func quarantineHistoryStore(fileManager: FileManager = .default) -> URL? {
         let rootURL = rootDirectoryURL(fileManager: fileManager)
@@ -95,15 +89,11 @@ package enum AppDataLocation {
 
     private static func migrateLegacyDataIfNeeded(to rootURL: URL, fileManager: FileManager) {
         let legacyRootURL = legacyRootDirectoryURL(fileManager: fileManager)
-        // `path()` percent-encodes, and the legacy path contains "Application Support";
-        // checking the encoded string never matched, so the migration never ran.
         guard fileManager.fileExists(atPath: legacyRootURL.path(percentEncoded: false)) else { return }
 
         migrateLegacyData(from: legacyRootURL, to: rootURL, fileManager: fileManager)
     }
 
-    /// Kept internal so migration behavior can be tested entirely in a temporary
-    /// directory without touching the user's real Application Support folder.
     static func migrateLegacyData(from legacyRootURL: URL, to rootURL: URL, fileManager: FileManager = .default) {
         ensureDirectoryExists(at: rootURL, fileManager: fileManager)
         migrateHistoryStoreIfNeeded(from: legacyRootURL, to: rootURL, fileManager: fileManager)
@@ -148,8 +138,6 @@ package enum AppDataLocation {
             everyFileArrived = everyFileArrived && arrived
         }
 
-        // Reclaim the old directory only once every file is confirmed at its new
-        // location; otherwise a failed move would quietly destroy cached audio.
         if everyFileArrived {
             do {
                 try fileManager.removeItem(at: legacyCacheURL)
@@ -159,8 +147,6 @@ package enum AppDataLocation {
         }
     }
 
-    /// Returns whether the item is present at the destination afterwards, which is
-    /// what callers actually need to know before they clean up the source.
     @discardableResult
     private static func moveItemIfNeeded(from sourceURL: URL, to destinationURL: URL, fileManager: FileManager) -> Bool {
         let destinationPath = destinationURL.path(percentEncoded: false)

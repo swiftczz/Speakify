@@ -22,17 +22,12 @@ enum FileNameFormatter {
         return truncated(sanitized) + ".\(fileExtension)"
     }
 
-    /// Everything outside letters, digits and the three separators a file name
-    /// reads well with. Letters are Unicode-wide, so Chinese and other non-Latin
-    /// scripts survive; only punctuation and symbols are dropped.
     private static let disallowedNameCharacters: CharacterSet = {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: ". -_")
         return allowed.inverted
     }()
 
-    /// HFS+/APFS cap file names at 255 bytes, and one CJK character costs three,
-    /// so a character-only limit is not enough to stay inside it.
     private static func truncated(_ name: String, characterLimit: Int = 80, byteLimit: Int = 180) -> String {
         var result = String(name.prefix(characterLimit))
         while result.utf8.count > byteLimit {
@@ -51,9 +46,6 @@ enum FileNameFormatter {
         return trimmedName.isEmpty ? "Voice" : trimmedName
     }
 
-    /// A destination that collides with neither an existing file nor its companion
-    /// sidecar (audio and subtitle are written as a pair and must stay in step),
-    /// appending " (2)", " (3)", ... until both slots are free.
     static func availableURL(
         in directory: URL,
         fileName: String,
@@ -77,8 +69,6 @@ enum FileNameFormatter {
         companionExtension: String?,
         fileManager: FileManager
     ) -> Bool {
-        // `path()` percent-encodes, and the " (2)" suffix contains a space, so the
-        // encoded string would never match a real file on disk.
         if fileManager.fileExists(atPath: url.path(percentEncoded: false)) {
             return true
         }

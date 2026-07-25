@@ -306,9 +306,6 @@ final class ModelLogicTests: XCTestCase {
         XCTAssertLessThanOrEqual(sample.currentTime, sample.duration)
     }
 
-    /// At 2x, three seconds of audio reaches the 2s mark after ~1s of wall time.
-    /// At 1x it would need 2s, so this can only pass when the rate is really applied
-    /// (`enableRate` must be set before `prepareToPlay()` or rate changes are ignored).
     @MainActor
     func testAudioPlaybackServiceAppliesFasterPlaybackRate() async throws {
         let service = AudioPlaybackService()

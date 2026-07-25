@@ -6,8 +6,6 @@ struct VoicePreviewConfiguration: Sendable {
     let modelID: String
     let apiKey: String
 
-    /// Previewing a voice without a provider-supplied sample means synthesizing one,
-    /// which costs credits on a metered service. Those previews wait for a click.
     func requiresExplicitStart(for voice: TTSVoice) -> Bool {
         voice.previewURL == nil && provider.capabilities.meteredSynthesis
     }
@@ -18,15 +16,11 @@ struct VoicePreviewConfiguration: Sendable {
             || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
     }
 
-    /// Identifies the credentials a preview was produced under without ever holding
-    /// the key itself, so two accounts never share a cache entry for the same voice ID.
     var accountFingerprint: String {
         CredentialScope.fingerprint(apiKey: apiKey)
     }
 }
 
-/// Owned by one visible voice row. Updating a preview now invalidates only the
-/// previous/current row instead of every row in a large account catalog.
 @MainActor
 @Observable
 final class VoicePreviewRowState {
@@ -35,9 +29,6 @@ final class VoicePreviewRowState {
     fileprivate(set) var errorMessage: String?
 }
 
-/// Plays a provider-supplied sample when one exists; otherwise it asks the
-/// active provider to synthesize a short, provider-neutral preview phrase.
-/// Preview playback stays isolated from generated speech playback.
 @MainActor
 final class VoicePreviewPlayer {
     private(set) var activeVoiceID: String?
@@ -70,7 +61,6 @@ final class VoicePreviewPlayer {
         Task { await persistentCache.prune() }
     }
 
-    /// Hover entry point: starts only when the preview is free to produce.
     func beginPreview(
         for voice: TTSVoice,
         configuration: VoicePreviewConfiguration,
@@ -153,7 +143,6 @@ final class VoicePreviewPlayer {
         if activeVoiceID == voice.id {
             stop()
         } else {
-            // An explicit click is the consent a metered preview needs.
             start(for: voice, configuration: configuration, state: state)
         }
     }

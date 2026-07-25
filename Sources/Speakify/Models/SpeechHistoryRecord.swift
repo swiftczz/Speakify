@@ -4,8 +4,6 @@ import SwiftData
 @Model
 package final class SpeechHistoryRecord {
     var title: String
-    /// Defaults preserve lightweight migration for records created before provider
-    /// and voice configuration were captured.
     var providerID: String = ""
     var voiceName: String
     var voiceID: String

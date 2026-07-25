@@ -1,11 +1,6 @@
 import CryptoKit
 import Foundation
 
-/// A privacy-safe identity for provider-scoped local data.
-///
-/// The original credential is never written to caches, SwiftData or logs. Changing
-/// either the provider or its key produces a different scope, so account-specific
-/// quota and generated audio cannot bleed into another account.
 enum CredentialScope {
     static func fingerprint(apiKey: String) -> String {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)

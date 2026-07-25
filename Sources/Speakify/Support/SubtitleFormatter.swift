@@ -18,9 +18,6 @@ enum SubtitleFormatter {
         }.joined(separator: "\n\n") + "\n"
     }
 
-    /// Builds a useful SRT when a provider returns audio without character
-    /// timestamps. Cue boundaries follow sentences and their times are
-    /// distributed proportionally across the measured audio duration.
     static func estimatedSRT(text: String, duration: TimeInterval) throws -> String {
         let characters = Array(text).map(String.init)
         guard characters.isEmpty == false, duration > 0 else {

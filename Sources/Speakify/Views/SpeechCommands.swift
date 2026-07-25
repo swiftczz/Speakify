@@ -1,8 +1,5 @@
 import SwiftUI
 
-/// What the menu bar is allowed to do to the active window's speech session.
-/// Closures rather than the view model itself, so `Commands` — which lives in the
-/// `App` scene, outside any view — never has to reach into view state.
 package struct SpeechCommandActions {
     var canGenerate: Bool
     var isGenerating: Bool
@@ -38,13 +35,6 @@ extension FocusedValues {
     @Entry package var speechActions: SpeechCommandActions?
 }
 
-/// The Speech menu. Until now the app had no keyboard shortcuts at all, so every
-/// action needed the pointer.
-///
-/// Titles resolve through `L10n` rather than as `LocalizedStringKey` literals:
-/// `Commands` live in the `App` scene, where the `\.locale` environment the windows
-/// carry never reaches them, so literals would follow the *system* language and the
-/// menu bar would sit in Chinese above an English window.
 package struct SpeechCommands: Commands {
     @FocusedValue(\.speechActions) private var actions
 

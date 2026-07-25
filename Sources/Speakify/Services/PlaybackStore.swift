@@ -1,10 +1,5 @@
 import Foundation
 
-/// Owns the high-frequency playback state separately from the speech catalog.
-///
-/// Progress changes ten times per second while audio is playing. Keeping those
-/// mutations here means only the views that read this store are invalidated for
-/// a playback tick — the editor, toolbar, voice catalog and sidebar are not.
 @MainActor
 @Observable
 final class PlaybackStore {
@@ -60,7 +55,6 @@ final class PlaybackStore {
         currentTime = clampedTime
     }
 
-    /// Returns `true` exactly once when active playback reaches its end.
     func refresh() -> Bool {
         guard isPlaying else { return false }
 

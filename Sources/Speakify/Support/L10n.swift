@@ -28,13 +28,6 @@ enum L10n {
         selectedLanguage.locale
     }
 
-    /// The bundle SwiftUI views must pass to `Text(_:bundle:)`.
-    ///
-    /// The strings ship two ways: `build_and_run.sh` copies the `.lproj` folders into
-    /// `Contents/Resources`, and SwiftPM also emits them into `Speakify_Speakify.bundle`.
-    /// A packaged app finds them in the main bundle; `swift run` only has the SwiftPM
-    /// one. Resolving both is what makes a development run honour the language picker
-    /// instead of silently falling back to English.
     static var resourceBundle: Bundle {
         Bundle.main.path(forResource: "en", ofType: "lproj") == nil ? .module : .main
     }
@@ -48,8 +41,6 @@ enum L10n {
         guard let identifier = selectedLanguage.localizationIdentifier else {
             return base
         }
-        // SwiftPM lowercases localization directory names when it builds its resource
-        // bundle, so `zh-Hans.lproj` is `zh-hans.lproj` there. Try both spellings.
         for candidate in [identifier, identifier.lowercased()] {
             if let path = base.path(forResource: candidate, ofType: "lproj"),
                let bundle = Bundle(path: path) {

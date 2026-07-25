@@ -40,7 +40,6 @@ struct ElevenLabsProvider: TTSProvider {
         "eleven_flash_v2_5"
     ]
 
-    /// Offline fallback for the anonymous `/v1/voices` catalog.
     static let publicDefaultVoices: [TTSVoice] = [
         publicVoice(id: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger - Laid-Back, Casual, Resonant", gender: "male"),
         publicVoice(id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah - Mature, Reassuring, Confident", gender: "female"),
@@ -82,8 +81,6 @@ struct ElevenLabsProvider: TTSProvider {
 
     static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.default
-        // Guards against a request that stalls forever; synthesis of long text is
-        // allowed to take a while as long as the connection keeps delivering data.
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 300
         return URLSession(configuration: configuration)
@@ -131,8 +128,6 @@ struct ElevenLabsProvider: TTSProvider {
             return TTSVoiceCatalog(publicVoices: publicVoices, accountVoices: [])
         }
 
-        // The account half failing (bad key, rate limit, outage) must not take the
-        // public half down with it: a usable picker beats an empty one.
         do {
             let accountVoices = try await fetchAccountVoices(apiKey: resolvedAPIKey)
             return TTSVoiceCatalog(publicVoices: publicVoices, accountVoices: accountVoices)
@@ -160,8 +155,6 @@ struct ElevenLabsProvider: TTSProvider {
         }
     }
 
-    /// `/v2/voices` pages at 100 entries, so an account with more cloned voices than
-    /// that needs every page followed before the picker shows a complete list.
     private func fetchAccountVoices(apiKey: String) async throws -> [TTSVoice] {
         var voices: [ElevenLabsVoice] = []
         var nextPageToken: String?
@@ -192,7 +185,6 @@ struct ElevenLabsProvider: TTSProvider {
         return normalized(voices)
     }
 
-    /// A stop so a service that keeps handing back a token can never spin forever.
     private static let maxVoicePages = 20
 
     private func decodeVoices(from data: Data) throws -> [TTSVoice] {
@@ -345,7 +337,6 @@ private struct ElevenLabsVoicesResponse: Decodable {
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         voices = try container.decode([ElevenLabsVoice].self, forKey: .voices)
-        // `/v1/voices` returns neither field and is never paged.
         hasMore = try container.decodeIfPresent(Bool.self, forKey: .hasMore) ?? false
         nextPageToken = try container.decodeIfPresent(String.self, forKey: .nextPageToken)
     }
@@ -391,7 +382,6 @@ private struct ElevenLabsVerifiedLanguage: Decodable {
 private struct ElevenLabsSpeechBody: Encodable {
     let text: String
     let modelID: String
-    /// Omitted when nil so the model detects the language from the text itself.
     let languageCode: String?
     let voiceSettings: ElevenLabsVoiceSettings
 

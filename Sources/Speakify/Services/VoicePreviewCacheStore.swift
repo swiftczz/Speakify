@@ -6,7 +6,6 @@ struct CachedVoicePreview: Sendable {
     let fileExtension: String
 }
 
-/// A small persistent cache for provider samples and synthesized previews.
 actor VoicePreviewCacheStore {
     private let retention: TimeInterval
     private let sizeLimit: Int
@@ -63,7 +62,6 @@ actor VoicePreviewCacheStore {
             )
             prune()
         } catch {
-            // Preview caching is opportunistic and must not affect playback.
         }
     }
 

@@ -150,8 +150,6 @@ final class ElevenLabsProviderTests: XCTestCase {
         XCTAssertEqual(MockURLProtocol.lastRequest?.url?.path, "/v2/voices")
     }
 
-    /// An account with more than one page of voices must be followed to the end,
-    /// otherwise the picker silently stops at the first 100.
     func testAccountVoicesFollowEveryPage() async throws {
         nonisolated(unsafe) var requestedTokens: [String?] = []
         MockURLProtocol.responder = { request in
@@ -191,8 +189,6 @@ final class ElevenLabsProviderTests: XCTestCase {
         XCTAssertNil(catalog.accountFailure)
     }
 
-    /// The public half of the catalog is still worth showing when the account half
-    /// fails, so the picker never ends up empty over a bad key alone.
     func testAccountVoiceFailureKeepsPublicVoicesAndReportsTheFailure() async throws {
         MockURLProtocol.responder = { request in
             guard request.url?.path == "/v1/voices" else {
@@ -249,8 +245,6 @@ final class ElevenLabsProviderTests: XCTestCase {
         XCTAssertTrue(SpeechViewModel.isUnavailableVoiceError(voiceNotFound))
     }
 
-    /// A quota failure whose prose mentions "not available" must not be mistaken for
-    /// a dead voice, which would drop a working voice from the picker.
     func testQuotaErrorMentioningNotAvailableIsNotTreatedAsUnavailableVoice() async throws {
         let quotaExceeded = try await synthesisError(
             statusCode: 401,
@@ -382,7 +376,6 @@ final class MockURLProtocol: URLProtocol {
 }
 
 private extension URLRequest {
-    /// URLProtocol hands the body over as a stream rather than on `httpBody`.
     func readBody() -> Data? {
         if let httpBody {
             return httpBody

@@ -1,7 +1,5 @@
 import Foundation
 
-/// One cached speech, which is an audio file plus its optional alignment sidecar.
-/// The files share a cache key, so they are always evicted together.
 struct AudioCacheEntry: Equatable {
     let key: String
     let urls: [URL]
@@ -10,8 +8,6 @@ struct AudioCacheEntry: Equatable {
 }
 
 enum AudioCachePruner {
-    /// Entries to delete: everything past `retention`, plus the oldest survivors
-    /// while the cache is still over `sizeLimit`.
     static func entriesToEvict(
         from entries: [AudioCacheEntry],
         now: Date,
@@ -41,9 +37,6 @@ enum AudioCachePruner {
         return evicted
     }
 
-    /// Groups a directory listing into entries. Files are keyed by the filename up
-    /// to the first dot, which is the request hash shared by an audio file and its
-    /// `.alignment.json` sidecar.
     static func entries(from fileURLs: [URL], fileManager: FileManager = .default) -> [AudioCacheEntry] {
         var grouped: [String: (urls: [URL], modifiedAt: Date, size: Int)] = [:]
 

@@ -1,8 +1,5 @@
 import Foundation
 
-/// Xiaomi MiMo TTS v2.5, exposed through an OpenAI-compatible chat completions
-/// API. The catalog is fixed — one TTS model and a preset voice roster — so
-/// `fetchModels` and `fetchVoiceCatalog` answer locally without a network round trip.
 struct MiMoProvider: TTSProvider {
     let id = "mimo"
     let displayName = "Xiaomi MiMo"
@@ -39,7 +36,6 @@ struct MiMoProvider: TTSProvider {
         TTSModel(id: "mimo-v2.5-tts", name: "MiMo TTS v2.5", canDoTextToSpeech: true, servesProVoices: false)
     ]
 
-    /// The service rejects unknown voices and enumerates exactly this roster.
     static let presetVoices: [TTSVoice] = [
         presetVoice(id: "mimo_default", name: "MiMo Default", gender: nil, locale: nil, language: nil),
         presetVoice(id: "冰糖", name: "冰糖", gender: "female", locale: "zh-CN", language: "Chinese"),
@@ -121,8 +117,6 @@ private struct MiMoSpeechBody: Encodable {
     }
 
     let model: String
-    /// The assistant message carries the text to synthesize; a user message is
-    /// only needed for style prompts, which this app does not send.
     let messages: [Message]
     let audio: Audio
     let stream: Bool
@@ -152,8 +146,6 @@ private struct MiMoCompletionResponse: Decodable {
 }
 
 private enum MiMoErrorMessage {
-    /// The service wraps failures as `{"error": {message, param, code, type}}`,
-    /// where `param` often carries the actionable detail (e.g. the valid voice list).
     static func parse(from data: Data) -> (message: String, code: String?) {
         guard data.isEmpty == false else {
             return ("No error body returned.", nil)

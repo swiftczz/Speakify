@@ -3,8 +3,6 @@ import SwiftData
 
 @Model
 package final class SubscriptionQuotaSnapshot {
-    /// Defaults keep the model eligible for lightweight migration from the original
-    /// unscoped schema. Legacy rows never match a real credential scope.
     var providerID: String = ""
     var credentialFingerprint: String = ""
     var characterCount: Int

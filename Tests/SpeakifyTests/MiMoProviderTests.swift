@@ -73,8 +73,6 @@ final class MiMoProviderTests: XCTestCase {
         }
     }
 
-    /// The service rejects unknown voices, so the shipped roster must match the
-    /// list its own error message enumerates.
     func testPresetVoicesMatchServiceRoster() {
         let serviceRoster = ["mimo_default", "冰糖", "茉莉", "苏打", "白桦", "Mia", "Chloe", "Milo", "Dean"]
         XCTAssertEqual(MiMoProvider.presetVoices.map(\.id), serviceRoster)
@@ -148,9 +146,6 @@ final class MiMoProviderTests: XCTestCase {
     }
 }
 
-/// Hits the real MiMo endpoint only when explicitly opted in. Requiring a second
-/// switch prevents an exported developer key from turning every unit-test run into
-/// a billable, network-dependent integration test.
 final class MiMoProviderLiveTests: XCTestCase {
     @MainActor
     func testLiveSynthesisReturnsPlayableMP3() async throws {

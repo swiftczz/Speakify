@@ -1,20 +1,12 @@
 import Foundation
 import MediaPlayer
 
-/// Publishes what is playing to the system, so the media keys, Control Center and
-/// the Now Playing widget can drive Speakify like any other audio app.
-///
-/// Speakify has no true pause — stopping releases the player and rewinds — so the
-/// remote pause/stop commands are wired to the same stop the transport bar performs,
-/// and play re-synthesizes or replays from the cache exactly as the play button does.
 @MainActor
 final class NowPlayingController {
     private var isConfigured = false
     private var onPlay: (() -> Void)?
     private var onStop: (() -> Void)?
 
-    /// Registered once, on first playback: claiming the remote commands at launch
-    /// would put a silent app in the Now Playing slot.
     func configure(onPlay: @escaping () -> Void, onStop: @escaping () -> Void) {
         self.onPlay = onPlay
         self.onStop = onStop
@@ -77,7 +69,6 @@ final class NowPlayingController {
         MPNowPlayingInfoCenter.default().playbackState = .stopped
     }
 
-    /// A readable one-line title for a block of prose.
     static func title(for text: String) -> String {
         let collapsed = text
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)

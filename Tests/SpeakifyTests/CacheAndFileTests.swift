@@ -52,7 +52,6 @@ final class AudioCachePrunerTests: XCTestCase {
             sizeLimit: 100
         )
 
-        // 180 bytes total: dropping the two oldest brings it to 60, under the limit.
         XCTAssertEqual(evicted.map(\.key), ["oldest", "middle"])
     }
 
@@ -124,8 +123,6 @@ final class FileNameFormatterAvailableURLTests: XCTestCase {
         XCTAssertEqual(url.lastPathComponent, "speech (2).mp3")
     }
 
-    /// The audio slot is free but the subtitle slot is not; taking it would clobber
-    /// the existing .srt, so the pair has to move on together.
     func testSuffixesWhenOnlyCompanionSubtitleExists() throws {
         let directory = try makeTemporaryDirectory()
         try Data().write(to: directory.appending(path: "speech.srt"))

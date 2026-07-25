@@ -53,8 +53,6 @@ final class VoicePreviewPlayerTests: XCTestCase {
         XCTAssertEqual(requestCount, 1, "Repeated hover previews should reuse the in-memory audio cache.")
     }
 
-    /// Synthesizing a preview costs credits on a metered service, so hovering must
-    /// not trigger one — only an explicit click may.
     @MainActor
     func testMeteredPreviewWithoutSampleWaitsForAClick() async throws {
         let recorder = PreviewRequestRecorder()
@@ -102,8 +100,6 @@ final class VoicePreviewPlayerTests: XCTestCase {
         XCTAssertEqual(clickRequestCount, 1)
     }
 
-    /// Two accounts can hold different voices under the same ID, so a preview cached
-    /// for one must never be replayed for the other.
     func testPreviewCacheKeySeparatesAccounts() {
         let provider = PreviewTestProvider(recorder: PreviewRequestRecorder(), audioData: Data())
         let first = VoicePreviewConfiguration(provider: provider, modelID: "m", apiKey: "key-one")

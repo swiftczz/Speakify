@@ -10,7 +10,6 @@ final class AudioPlaybackService {
         stop()
 
         let player = try AVAudioPlayer(data: data, fileTypeHint: Self.fileTypeHint(for: fileExtension))
-        // `enableRate` has to be set before `prepareToPlay()` for rate changes to take effect.
         player.enableRate = true
         player.prepareToPlay()
         self.player = player
@@ -29,8 +28,6 @@ final class AudioPlaybackService {
         player?.rate = playbackRate
     }
 
-    /// Moves the playhead without interrupting playback, so a listener can replay
-    /// the sentence they just missed.
     func seek(to time: TimeInterval) {
         guard let player else { return }
         player.currentTime = min(max(time, 0), player.duration)

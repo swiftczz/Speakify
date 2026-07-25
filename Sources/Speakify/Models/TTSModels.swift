@@ -7,7 +7,6 @@ struct TTSModel: Identifiable, Hashable, Sendable {
     let servesProVoices: Bool
 }
 
-/// A provider-neutral view of "how much can I still synthesize".
 struct TTSQuota: Equatable, Sendable {
     let characterCount: Int
     let characterLimit: Int
@@ -24,11 +23,9 @@ struct TTSQuota: Equatable, Sendable {
         guard characterLimit > 0 else { return 0 }
         return min(1, Double(characterCount) / Double(characterLimit))
     }
-
 }
 
 enum OutputFormat {
-    /// Human-readable label for a provider format ID such as `mp3_44100_128` or `wav`.
     static func displayName(for format: String) -> String {
         let parts = format.split(separator: "_").map(String.init)
         guard let codec = parts.first else { return format }
@@ -101,7 +98,6 @@ enum TTSLimits {
 }
 
 enum SpeechLanguage {
-    /// An empty code means the field is omitted so the model detects the language from the text.
     static let autoDetect = ""
 
     static let supportedCodes = [
@@ -147,9 +143,6 @@ struct SpeechAlignment: Codable, Equatable, Sendable {
     let characterStartTimesSeconds: [TimeInterval]
     let characterEndTimesSeconds: [TimeInterval]
 
-    /// Matching lengths alone are not enough to build a subtitle from: a cue needs
-    /// finite, forward-moving timestamps. Anything else is rejected here so callers
-    /// fall back to an estimated timeline instead of emitting a broken SRT.
     var isValid: Bool {
         guard characters.isEmpty == false,
               characters.count == characterStartTimesSeconds.count,
@@ -184,8 +177,6 @@ enum TTSProviderError: LocalizedError, Sendable {
     case insufficientCredits(required: Int, remaining: Int)
     case invalidResponse
     case requestChanged
-    /// `code` is the service's machine-readable identifier (e.g. `voice_not_found`),
-    /// kept separate so callers never have to pattern-match the human-readable message.
     case httpStatus(status: Int, message: String, code: String?)
 
     var errorDescription: String? {

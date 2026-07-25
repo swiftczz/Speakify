@@ -6,8 +6,6 @@ import XCTest
 
 @MainActor
 final class SpeechViewModelCatalogTests: XCTestCase {
-    /// A provider switch while a slow catalog request is still in flight must not let
-    /// the stale answer land on top of the provider the user actually selected.
     func testStaleCatalogLoadDoesNotOverwriteTheNewerProvider() async throws {
         let slow = StubProvider(
             id: "slow",
@@ -30,8 +28,6 @@ final class SpeechViewModelCatalogTests: XCTestCase {
         XCTAssertEqual(harness.viewModel.selectedVoice?.id, "fast-voice")
     }
 
-    /// Losing the account half of the catalog should still fill the picker with the
-    /// public half rather than leaving the user with nothing.
     func testPartialCatalogFailureStillPublishesPublicVoices() async throws {
         let provider = StubProvider(
             id: "partial",
@@ -63,8 +59,6 @@ final class SpeechViewModelCatalogTests: XCTestCase {
         XCTAssertEqual(harness.viewModel.voices.map(\.id), ["public-voice"])
     }
 
-    /// Switching credentials must drop the previous account's voices and balance up
-    /// front, so a reload that fails cannot leave another account's data on screen.
     func testCredentialChangeDropsPreviousAccountVoicesAndQuota() async throws {
         let provider = StubProvider(
             id: "account",
@@ -79,11 +73,9 @@ final class SpeechViewModelCatalogTests: XCTestCase {
         XCTAssertEqual(harness.viewModel.accountVoices.map(\.id), ["account-voice"])
         XCTAssertNotNil(harness.viewModel.quota)
 
-        // The next load fails outright, standing in for a key that is no longer valid.
         provider.failEverything = true
         harness.settings.apiKey = "second-key"
 
-        // The API key observer is debounced by 0.8s before it reloads.
         try await Task.sleep(for: .milliseconds(1_400))
 
         XCTAssertFalse(

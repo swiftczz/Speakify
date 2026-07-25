@@ -2,10 +2,6 @@ import AppKit
 import SwiftData
 import SwiftUI
 
-/// The window's right pane: past generations, grouped by day, searchable and
-/// deletable.
-/// It takes only a callback rather than the view model, so playback progress
-/// ticking ten times a second cannot drag it into a re-render.
 struct HistoryPanel: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.locale) private var locale
@@ -14,16 +10,9 @@ struct HistoryPanel: View {
     @State private var searchText = ""
     @State private var selectedHistoryIDs = Set<PersistentIdentifier>()
     @State private var showsDeleteConfirmation = false
-    /// Filtering, grouping and sorting run only when the records or the query
-    /// change, not on every re-render the rest of the window triggers.
     @State private var groupedHistory: [HistorySectionData] = []
 
     var body: some View {
-        // A `List`, not a `ScrollView` of stacked rows. The rows looked the same either
-        // way, but everything the system attaches to a list was missing: arrow keys,
-        // shift-click ranges, ⌘-click, ⌘A, and the delete key. Selection was a
-        // hand-drawn circle per row and a hand-painted highlight behind it, both of
-        // which are the list's job and neither of which followed the window's focus.
         List(selection: $selectedHistoryIDs) {
             ForEach(groupedHistory) { section in
                 Section {
@@ -43,35 +32,21 @@ struct HistoryPanel: View {
                 }
             }
         }
-        .listStyle(.inset)
+        .listStyle(.sidebar)
         .overlay {
             if groupedHistory.isEmpty {
                 emptyState
             }
         }
-        // The delete key, which the old hand-rolled list had no way to receive. The
-        // trailing trash button it replaces lived in a custom header bar; the same
-        // action is on every row's context menu.
         .onDeleteCommand {
             guard selectedHistoryIDs.isEmpty == false else { return }
             showsDeleteConfirmation = true
         }
-        // The search field lives in the panel, not in `.searchable`.
-        //
-        // `.searchable` is the usual answer and it does produce a real search control,
-        // but from inside an inspector it escapes into the *window* toolbar — and there
-        // it sat across the inspector's own leading divider, hiding it, while its width
-        // pushed the history toggle in off the trailing edge. An `NSSearchField` keeps
-        // the genuine control (magnifier, clear button, focus ring, Escape to clear)
-        // and keeps it inside the column it belongs to.
         .safeAreaInset(edge: .top, spacing: 0) {
             HistorySearchField(text: $searchText)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
         }
-        // No background of its own: this is the split view's inspector column, so the
-        // material, the leading separator and the drag handle are the system's to draw.
-        // Width bounds are set by the `inspectorColumnWidth` in `ContentView`.
         .onAppear(perform: rebuildGroupedHistory)
         .onChange(of: historyRecords) { _, _ in rebuildGroupedHistory() }
         .onChange(of: searchText) { _, _ in rebuildGroupedHistory() }
@@ -105,8 +80,6 @@ struct HistoryPanel: View {
         }
     }
 
-    /// Right-clicking a row outside the selection acts on that row alone, which is
-    /// what every macOS list does; inside it, on the whole selection.
     private func selectionIncluding(_ item: SpeechHistoryRecord) -> Set<PersistentIdentifier> {
         selectedHistoryIDs.contains(item.persistentModelID)
             ? selectedHistoryIDs
@@ -174,17 +147,14 @@ private struct HistorySectionData: Identifiable {
 private struct HistoryRow: View {
     let item: SpeechHistoryRecord
     let onApply: () -> Void
-    /// Bumped on each press so the symbol replays its bounce. Replaces a pair of
-    /// spring animations driven by an uncancellable `asyncAfter`.
     @State private var applyFeedback = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        // No selection circle and no selection background. Both are the list's now,
-        // which is also what makes them follow the window's focus state.
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: item.preview)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
@@ -219,15 +189,6 @@ private struct HistoryRow: View {
     }
 }
 
-/// The system search field, wrapped.
-///
-/// SwiftUI has no search-field *style* — `.searchable` is the only route to the real
-/// control, and in an inspector that route ends in the window toolbar. Wrapping
-/// `NSSearchField` gets the same control (magnifier, clear button, focus ring, Escape
-/// to clear, and the field's own menu) in a view that stays in this column.
-///
-/// The alternative was a `TextField` dressed up with a magnifying-glass image and a
-/// hand-drawn clear button, which is what this replaced in the first place.
 private struct HistorySearchField: NSViewRepresentable {
     @Binding var text: String
 
@@ -241,7 +202,6 @@ private struct HistorySearchField: NSViewRepresentable {
         field.setAccessibilityLabel(
             L10n.string("Search history", defaultValue: "Search history")
         )
-        // Fire on every keystroke rather than only on Return: the list filters live.
         field.sendsSearchStringImmediately = true
         field.sendsWholeSearchString = false
         return field
@@ -249,7 +209,6 @@ private struct HistorySearchField: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSSearchField, context: Context) {
         context.coordinator.text = $text
-        // Only when they differ, or assigning mid-edit would reset the insertion point.
         if nsView.stringValue != text {
             nsView.stringValue = text
         }

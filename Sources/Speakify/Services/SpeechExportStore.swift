@@ -5,7 +5,6 @@ struct SpeechExportResult: Sendable {
     let subtitleURL: URL?
 }
 
-/// Serializes export naming and file I/O away from the main actor.
 actor SpeechExportStore {
     func export(
         speech: GeneratedSpeech,

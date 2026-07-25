@@ -1,8 +1,5 @@
 import Foundation
 
-/// The on-disk cache of generated speech, kept off the main actor. Entries run to
-/// hundreds of megabytes in total, so reading, writing and pruning them from the
-/// UI actor would stall playback and typing while the files are walked.
 actor SpeechCacheStore {
     private let retention: TimeInterval
     private let sizeLimit: Int
@@ -10,8 +7,6 @@ actor SpeechCacheStore {
     private let overrideDirectoryURL: URL?
     private var resolvedDirectoryURL: URL?
 
-    /// Resolved on first use: locating the directory creates it, which is disk work
-    /// that should not happen while the caller is still constructing the store.
     private var directoryURL: URL {
         if let resolvedDirectoryURL {
             return resolvedDirectoryURL
@@ -66,7 +61,6 @@ actor SpeechCacheStore {
             }
             prune()
         } catch {
-            // Ignore cache write failures; the generation itself already succeeded.
         }
     }
 

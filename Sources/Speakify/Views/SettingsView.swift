@@ -102,9 +102,6 @@ package struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        // `.fileImporter`, not `NSOpenPanel().runModal()`. The panel version blocked the
-        // run loop from inside a view's action and needed AppKit imported into a
-        // SwiftUI file; this is declarative, and the sandbox grants the same access.
         .fileImporter(
             isPresented: $isChoosingDownloadDirectory,
             allowedContentTypes: [.folder]
@@ -123,11 +120,8 @@ package struct SettingsView: View {
             maxHeight: 760
         )
     }
-
 }
 
-/// A secure entry field with a reveal toggle, in the style of password fields
-/// in System Settings: the eye button swaps masked and plain text in place.
 private struct APIKeyField: View {
     @Binding var text: String
     @State private var isRevealed = false

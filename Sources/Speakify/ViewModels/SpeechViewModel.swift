@@ -15,7 +15,6 @@ final class SpeechViewModel {
     struct DownloadFeedback: Identifiable, Equatable {
         let id = UUID()
         let audioURL: URL
-        /// `nil` when the provider does not produce alignment for subtitles.
         let subtitleURL: URL?
 
         var fileName: String { audioURL.lastPathComponent }
@@ -28,10 +27,6 @@ final class SpeechViewModel {
             invalidateSpeechCache()
         }
     }
-    /// Cached rather than computed: `canGenerate`, `isTextOverLimit` and
-    /// `estimatedCreditCost` all read it, and the transport bar re-evaluates them
-    /// ten times a second while audio plays. Trimming a draft that can run to
-    /// 40,000 characters that often is pure waste.
     private(set) var trimmedText: String
     var models: [TTSModel] = []
     var voices: [TTSVoice] = []
@@ -64,8 +59,6 @@ final class SpeechViewModel {
     )
     private(set) var statusTone: StatusTone = .info
     var downloadFeedback: DownloadFeedback?
-    /// Bumped by the ⌘L menu command. The editor watches it and takes focus; the
-    /// count itself carries no meaning.
     private(set) var editorFocusRequests = 0
     var quota: TTSQuota?
     private(set) var quotaScopeIdentifier: String?
@@ -82,31 +75,20 @@ final class SpeechViewModel {
     @ObservationIgnored private var synthesisTask: Task<GeneratedSpeech, any Error>?
     @ObservationIgnored private var catalogTask: Task<Void, Never>?
     @ObservationIgnored private var draftSaveTask: Task<Void, Never>?
-    /// Bumped whenever a synthesis starts or is cancelled, so a superseded run
-    /// never clears state that belongs to the run that replaced it.
     @ObservationIgnored private var generationToken = 0
-    /// Provider + key of the last catalog load, so the debounced API key
-    /// observer skips the reload a provider switch has already performed.
     @ObservationIgnored private var lastCatalogSignature: String?
     @ObservationIgnored private var suppressNextProviderReload = false
-    /// Debounces the credential reload so typing or pasting an API key fires one
-    /// reload, not one per keystroke.
     @ObservationIgnored private var credentialReloadTask: Task<Void, Never>?
     @ObservationIgnored private let cacheStore: SpeechCacheStore
     @ObservationIgnored private let catalogCacheStore: VoiceCatalogCacheStore
     @ObservationIgnored private let exportStore: SpeechExportStore
     @ObservationIgnored private let historyStore: SpeechHistoryStore
     @ObservationIgnored private let nowPlaying = NowPlayingController()
-    /// Remembered from the last `play`, so a media-key replay can still write history.
-    /// The remote commands arrive from AppKit with no SwiftUI environment attached.
     @ObservationIgnored private var nowPlayingModelContext: ModelContext?
     private let apiKeyDebounceInterval: Duration = .milliseconds(800)
-    /// Long enough that a burst of typing writes once, short enough that the draft
-    /// survives a crash moments after the user stops.
     private let draftSaveDelay: Duration = .milliseconds(400)
 
     private static let audioCacheRetention: TimeInterval = 10 * 24 * 60 * 60
-    /// Roughly 8 hours of mp3_44100_128 audio; past this the oldest speech is dropped.
     private static let audioCacheSizeLimit = 500 * 1_024 * 1_024
 
     init(
@@ -123,7 +105,6 @@ final class SpeechViewModel {
     ) {
         self.settings = settings
         self.text = settings.draftText
-        // `didSet` does not run during initialization, so seed the cache here.
         self.trimmedText = settings.draftText.trimmingCharacters(in: .whitespacesAndNewlines)
         self.providers = providers
         self.playback = playback
@@ -176,8 +157,6 @@ final class SpeechViewModel {
         characterCount > characterLimit
     }
 
-    /// What the editor's counter shows. Deliberately the trimmed length, so the
-    /// number and the over-limit warning describe the same text the provider is sent.
     var characterCount: Int {
         trimmedText.count
     }
@@ -218,8 +197,6 @@ final class SpeechViewModel {
         )
     }
 
-    /// Replaces any catalog load already running: switching provider or key while a
-    /// slower request is in flight must never let the stale answer land afterwards.
     func loadModelsAndVoices() async {
         catalogTask?.cancel()
         let task = Task { @MainActor [weak self] () -> Void in
@@ -291,8 +268,6 @@ final class SpeechViewModel {
 
             let status = catalogStatus(for: catalog, apiKey: apiKey)
             updateStatus(status.message, tone: status.tone)
-            // Voice selection is ready now. Quota is useful secondary information and
-            // must not leave the catalog spinner up while its endpoint is slow.
             isLoadingVoices = false
             await refreshQuota(apiKey: apiKey)
         } catch {
@@ -312,8 +287,6 @@ final class SpeechViewModel {
             let loadedModels = try await provider.fetchModels(apiKey: apiKey)
             return loadedModels.isEmpty ? provider.fallbackModels : loadedModels
         } catch {
-            // Public voices remain usable when an expired key makes only the
-            // authenticated model endpoint fail.
             return provider.fallbackModels
         }
     }
@@ -408,8 +381,6 @@ final class SpeechViewModel {
                 ),
                 tone: .success
             )
-            // Written only once the audio is confirmed playable, so unplayable
-            // output leaves no history entry. A failed write must not stop playback.
             try? historyStore.record(
                 speech: speech,
                 providerID: settings.providerID,
@@ -425,7 +396,6 @@ final class SpeechViewModel {
         }
     }
 
-    /// Aborts an in-flight synthesis so a superseded request stops burning quota.
     func cancelGeneration() {
         guard isGenerating else { return }
         synthesisTask?.cancel()
@@ -456,7 +426,6 @@ final class SpeechViewModel {
         )
     }
 
-    /// Asks the editor to take focus (⌘L).
     func focusEditor() {
         editorFocusRequests += 1
     }
@@ -516,8 +485,6 @@ final class SpeechViewModel {
                 audioURL: result.audioURL,
                 subtitleURL: result.subtitleURL
             )
-            // The files are already on disk at this point, so a failed history write
-            // must not report the export itself as failed. Same policy as `play`.
             try? historyStore.record(
                 speech: speech,
                 providerID: settings.providerID,
@@ -705,8 +672,6 @@ final class SpeechViewModel {
         resetPlaybackForNewSpeech()
     }
 
-    /// Writes a debounced draft immediately, for the moments where waiting out the
-    /// delay would lose it — the window closing, or the app going away.
     func flushPendingDraft() {
         guard draftSaveTask != nil else { return }
         draftSaveTask?.cancel()
@@ -714,7 +679,6 @@ final class SpeechViewModel {
         settings.draftText = text
     }
 
-    /// Coalesces keystrokes into one write instead of hitting user defaults per character.
     private func scheduleDraftSave() {
         draftSaveTask?.cancel()
         let draft = text
@@ -771,10 +735,6 @@ final class SpeechViewModel {
         quotaRefreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
 
-            // Usage updates can lag slightly behind synthesis completion. Poll at
-            // 0, 5, 10, 15, 20 and 25 seconds (not cumulatively increasing sleeps),
-            // and stop as soon as the balance actually moves — the remaining
-            // requests would only re-fetch a number we already have.
             for attempt in 0..<6 {
                 if attempt > 0 {
                     try? await Task.sleep(for: .seconds(5))
@@ -788,8 +748,6 @@ final class SpeechViewModel {
         }
     }
 
-    /// Identifies the credentials a catalog load was made with, so provider and
-    /// API key observers never trigger duplicate loads for the same state.
     private var catalogSignature: String {
         CredentialScope.identifier(
             providerID: settings.providerID,
@@ -810,8 +768,6 @@ final class SpeechViewModel {
         await loadModelsAndVoices()
     }
 
-    /// Drops everything tied to the previous credentials before a reload, so a reload
-    /// that fails can never leave the old account's voices or balance on screen.
     private func clearAccountScopedState() {
         quotaRefreshTask?.cancel()
         let accountVoiceIDs = Set(accountVoices.map(\.id))
@@ -843,18 +799,6 @@ final class SpeechViewModel {
         await reloadCatalogForCredentialChange()
     }
 
-    // MARK: - Settings reactions
-    //
-    // The view model owns its reaction to AppSettings, independent of any view's
-    // lifecycle, exactly as the old Combine subscriptions did. `withObservationTracking`
-    // replaces those subscriptions now that AppSettings is `@Observable`: it fires
-    // once when any tracked value is about to change, and we re-arm after handling
-    // it. Because this view model is `@MainActor` (hence `Sendable`), the `@Sendable`
-    // onChange closure captures only `[weak self]` and a `Sendable` snapshot.
-
-    /// The AppSettings values the view model reacts to, captured together so a
-    /// batch of changes (a provider switch rewrites several at once) is diffed in
-    /// a single pass.
     private struct SettingsSnapshot: Equatable, Sendable {
         var appLanguage: AppLanguage
         var providerID: String
@@ -880,8 +824,6 @@ final class SpeechViewModel {
     private func observeSettingsChanges(previous: SettingsSnapshot? = nil) {
         let baseline = previous ?? currentSettingsSnapshot()
         withObservationTracking {
-            // Touching every reacted-to property registers it, so a change to any
-            // one re-arms this observer.
             _ = settings.appLanguage
             _ = settings.providerID
             _ = settings.apiKey
@@ -890,8 +832,6 @@ final class SpeechViewModel {
             _ = settings.languageCode
             _ = settings.playbackRate
         } onChange: { [weak self] in
-            // Fires during the willSet, before the value commits; hop to the next
-            // MainActor turn so the snapshot reads the settled values.
             Task { @MainActor in
                 guard let self else { return }
                 let current = self.currentSettingsSnapshot()
@@ -909,8 +849,6 @@ final class SpeechViewModel {
             )
         }
         if old.providerID != new.providerID {
-            // `applyHistoryDraft` performs the switch itself and sets
-            // `suppressNextProviderReload`, so honour that flag instead of switching twice.
             if suppressNextProviderReload {
                 suppressNextProviderReload = false
             } else {
@@ -935,14 +873,11 @@ final class SpeechViewModel {
         }
     }
 
-    /// Debounced: typing or pasting a key must not fire a full model/voice/quota
-    /// reload per character.
     private func scheduleCredentialReload() {
         credentialReloadTask?.cancel()
         credentialReloadTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: self?.apiKeyDebounceInterval ?? .milliseconds(800))
             guard let self, Task.isCancelled == false else { return }
-            // A provider switch already reloaded with this exact state.
             guard self.lastCatalogSignature != self.catalogSignature else { return }
             await self.reloadCatalogForCredentialChange()
         }
@@ -1005,9 +940,6 @@ final class SpeechViewModel {
         self.selectedVoice = voices.first
     }
 
-    /// Deliberately narrow: only the service's explicit "this voice is gone" code
-    /// removes a voice. Matching loose phrases such as "not available" also caught
-    /// unrelated failures (quota, permissions) and dropped a perfectly good voice.
     nonisolated static func isUnavailableVoiceError(_ error: any Error) -> Bool {
         guard case let TTSProviderError.httpStatus(_, _, code) = error else { return false }
         return code == "voice_not_found"

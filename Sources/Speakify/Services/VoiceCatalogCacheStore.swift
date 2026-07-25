@@ -1,8 +1,6 @@
 import CryptoKit
 import Foundation
 
-/// Keeps the last successful provider catalog available across launches. Account
-/// keys are represented only by a SHA-256 scope and never written to the cache.
 actor VoiceCatalogCacheStore {
     private struct Record: Codable {
         let publicVoices: [TTSVoice]
@@ -66,8 +64,6 @@ actor VoiceCatalogCacheStore {
                 options: .atomic
             )
         } catch {
-            // Catalog caching is a launch/offline optimization; a write failure
-            // must never make a successfully loaded provider unusable.
         }
     }
 

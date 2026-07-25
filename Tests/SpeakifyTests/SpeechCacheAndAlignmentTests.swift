@@ -24,8 +24,6 @@ final class SpeechAlignmentValidationTests: XCTestCase {
         XCTAssertFalse(Self.alignment(starts: [0, 0.4, 0.2], ends: [0.4, 0.6, 0.8]).isValid)
     }
 
-    /// A subtitle built from unusable timestamps is worse than no subtitle, so the
-    /// formatter has to refuse it and let the caller estimate a timeline instead.
     func testSubtitleFormatterRefusesInvalidTimestamps() {
         XCTAssertThrowsError(
             try SubtitleFormatter.srt(from: Self.alignment(starts: [0, .nan, 0.4], ends: [0.2, 0.4, 0.6]))
@@ -42,8 +40,6 @@ final class SpeechAlignmentValidationTests: XCTestCase {
 }
 
 final class SpeechFileNameUnicodeTests: XCTestCase {
-    /// Chinese text used to be stripped down to a bare timestamp, leaving a folder of
-    /// files nobody could tell apart.
     func testKeepsChineseCharactersInTheFileName() {
         let fileName = FileNameFormatter.speechFileName(
             text: "今天天气很好，我们去散步吧。",

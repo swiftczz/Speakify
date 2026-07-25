@@ -32,9 +32,6 @@ package enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-/// The window's light/dark appearance. `system` means the app follows the system
-/// setting, which is what macOS apps do by default and what this app did before the
-/// setting existed; the other two override it for this app alone.
 package enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
     case system
     case light
@@ -45,7 +42,6 @@ package enum AppAppearance: String, CaseIterable, Identifiable, Sendable {
     var titleKey: String {
         switch self {
         case .system:
-            // Shares the key the language picker uses for the same idea.
             return "System Default"
         case .light:
             return "Light"
@@ -70,9 +66,6 @@ package final class AppSettings {
         didSet { defaults.set(appAppearance.rawValue, forKey: Keys.appAppearance) }
     }
 
-    /// The active speech service. The provider-scoped values below (API key,
-    /// model, output format) swap alongside it, so each service keeps its own
-    /// setup and switching back restores exactly what was configured before.
     var providerID: String {
         didSet {
             defaults.set(providerID, forKey: Keys.providerID)
@@ -164,8 +157,6 @@ package final class AppSettings {
         appLanguage.locale
     }
 
-    /// Reads any provider's stored key, active or not, so Settings can edit all
-    /// of them side by side.
     func apiKey(for providerID: String) -> String {
         guard providerID != self.providerID else { return apiKey }
         return defaults.string(forKey: Keys.scoped(Keys.apiKey, providerID)) ?? ""
@@ -215,8 +206,6 @@ package final class AppSettings {
         )
     }
 
-    /// Early versions stored a single flat API key/model/format for the only
-    /// provider (ElevenLabs); move those into the provider-scoped slots once.
     private static func migrateLegacyProviderValues(in defaults: UserDefaults) {
         for key in [Keys.apiKey, Keys.modelID, Keys.outputFormat] {
             let scopedKey = Keys.scoped(key, "elevenlabs")
@@ -228,9 +217,6 @@ package final class AppSettings {
         }
     }
 
-    /// MiMo originally shipped as WAV-only, so early versions persisted WAV
-    /// even when the user never made an explicit choice. Apply the new MP3
-    /// default once; choosing WAV after this migration remains respected.
     private static func migrateMiMoDefaultOutputFormat(in defaults: UserDefaults) {
         guard defaults.bool(forKey: Keys.migratedMiMoMP3Default) == false else { return }
 

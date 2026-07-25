@@ -2,8 +2,6 @@ import CryptoKit
 import Foundation
 import SwiftData
 
-/// Owns SwiftData writes and request identity for generated speech so the main
-/// presentation model does not also have to manage history persistence policy.
 @MainActor
 final class SpeechHistoryStore {
     private let recordLimit: Int

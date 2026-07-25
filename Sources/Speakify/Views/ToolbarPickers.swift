@@ -1,7 +1,5 @@
 import SwiftUI
 
-/// The toolbar's service + model picker. Service and model are chosen together so
-/// one menu covers "which engine, which voice quality" in a single step.
 struct ServiceModelToolbarPicker: View {
     let settings: AppSettings
     let viewModel: SpeechViewModel
@@ -38,9 +36,6 @@ struct ServiceModelToolbarPicker: View {
         }
         .labelsHidden()
         .controlSize(.small)
-        // Was a fixed 228. Together with the voice picker that overflowed the
-        // centred toolbar region, and macOS silently dropped the item that no
-        // longer fitted rather than shrinking anything.
         .frame(minWidth: 150, idealWidth: 200, maxWidth: 228)
         .help(Text("Speech service and model"))
         .accessibilityLabel("Speech service and model")
@@ -59,7 +54,6 @@ private struct ServiceModelSelection: Hashable {
     let modelID: String
 }
 
-/// The toolbar's voice button and the popover it opens.
 struct VoiceToolbarPicker: View {
     let viewModel: SpeechViewModel
     @State private var previewPlayer = VoicePreviewPlayer()
@@ -70,11 +64,6 @@ struct VoiceToolbarPicker: View {
         Button {
             isPresented.toggle()
         } label: {
-            // No `Spacer` here. As its own toolbar item this label is measured on its
-            // own, and a greedy spacer made it report an unbounded width — which the
-            // toolbar reads as a flexible gap rather than a control, and drops. Pushing
-            // the chevron over with a `maxWidth` on the title keeps the same layout
-            // while the label still measures to a definite 138.
             HStack(spacing: 8) {
                 Text(viewModel.selectedVoice?.name ?? "Select Voice")
                     .lineLimit(1)
@@ -90,10 +79,7 @@ struct VoiceToolbarPicker: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .help(
-            viewModel.selectedVoice?.displayName
-                ?? L10n.string("Select a voice", defaultValue: "Select a voice")
-        )
+        .helpIfPresent(voiceHelp)
         .accessibilityLabel("Voice")
         .popover(isPresented: $isPresented, arrowEdge: .top) {
             VoiceSelectionPopover(
@@ -105,6 +91,24 @@ struct VoiceToolbarPicker: View {
         .onChange(of: viewModel.activeProvider.id) { _, _ in
             previewPlayer.stop()
             isPresented = false
+        }
+    }
+
+    private var voiceHelp: String? {
+        guard let voice = viewModel.selectedVoice else {
+            return L10n.string("Select a voice", defaultValue: "Select a voice")
+        }
+        return voice.displayName == voice.name ? nil : voice.displayName
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func helpIfPresent(_ text: String?) -> some View {
+        if let text {
+            help(text)
+        } else {
+            self
         }
     }
 }
@@ -124,10 +128,6 @@ private struct VoiceSelectionPopover: View {
         )
     }
 
-    /// Drives the list's highlight and the live choice together, so arrowing down the
-    /// list changes the voice as it goes. That is what selection means in a macOS
-    /// list, and it is what the old stack of rows had no way to express: the highlight
-    /// was a hand-drawn rounded rectangle and the choice only moved on a click.
     private var selection: Binding<TTSVoice.ID?> {
         Binding {
             viewModel.selectedVoice?.id
@@ -160,18 +160,8 @@ private struct VoiceSelectionPopover: View {
                 }
             }
         }
-        // `.sidebar`, not `.inset`. An inset list draws the selection as a square,
-        // edge-to-edge blue bar with a hairline under every row — the list look from
-        // before Big Sur. The sidebar style is what macOS 26 uses for a chooser like
-        // this: an inset highlight with the container's own corner radius, and no
-        // per-row rules.
         .listStyle(.sidebar)
-        // A fixed height, not `rowCount * 36 + 12`. That arithmetic hardcoded the row
-        // height, so the popover measured itself wrongly the moment the system text
-        // size moved off its default. A container the list scrolls inside makes no
-        // assumption about how tall a row turns out to be.
         .frame(width: width, height: height)
-        // Return commits the highlighted voice, which selection has already applied.
         .onKeyPress(.return) {
             isPresented = false
             return .handled
@@ -250,9 +240,6 @@ private struct VoiceOptionRow: View {
     }
 
     var body: some View {
-        // No selection checkmark, no hand-drawn hover fill and no fixed row height.
-        // The list draws all three, and unlike the hand-drawn versions its highlight
-        // follows the window's focus state.
         HStack(spacing: 8) {
             Button(action: onCommit) {
                 Text(voice.name)
@@ -267,11 +254,6 @@ private struct VoiceOptionRow: View {
         }
     }
 
-    /// Hover to preview, and click to preview too.
-    ///
-    /// Hovering the waveform starts the sample; leaving stops it. `beginPreview`
-    /// refuses metered voices on its own, so for those the hover does nothing and the
-    /// click is the way in — which is why the help tag differs between them.
     private var previewButton: some View {
         Button {
             previewPlayer.togglePreview(
@@ -310,41 +292,6 @@ private struct VoiceOptionRow: View {
     }
 }
 
-private struct AnimatedWaveformIcon: View {
-    let isAnimating: Bool
-    /// Stops the bars moving, and stops the timeline waking the view 24 times a
-    /// second, when the user has asked for less motion.
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @ScaledMetric private var scale: CGFloat = 1
-    private let restingHeights: [CGFloat] = [6, 11, 16, 11, 6]
-
-    private var isMoving: Bool {
-        isAnimating && reduceMotion == false
-    }
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 24, paused: isMoving == false)) { timeline in
-            HStack(spacing: 2 * scale) {
-                ForEach(restingHeights.indices, id: \.self) { index in
-                    Capsule()
-                        .frame(
-                            width: 1.5 * scale,
-                            height: barHeight(at: index, date: timeline.date) * scale
-                        )
-                }
-            }
-            .frame(width: 20 * scale, height: 18 * scale)
-        }
-    }
-
-    private func barHeight(at index: Int, date: Date) -> CGFloat {
-        guard isMoving else { return restingHeights[index] }
-        let time = date.timeIntervalSinceReferenceDate
-        let wave = abs(sin(time * 7 + Double(index) * 0.9))
-        return 5 + CGFloat(wave) * 12
-    }
-}
-
 struct VoiceSettingsToolbarButton: View {
     let viewModel: SpeechViewModel
     @State private var isPresented = false
@@ -374,14 +321,6 @@ private struct VoiceSettingsPopover: View {
     }
 
     var body: some View {
-        // A `Form`, not a hand-stacked `VStack`.
-        //
-        // The rows disagreed with each other before: "Generation Speed" used
-        // `LabeledContent` when the model did not support it, and every other row was a
-        // hand-built `HStack` with its own `Spacer`. So the labels did not share a
-        // column, and switching to a model without speed control made the layout jump.
-        // A form aligns the label column, spaces the rows and reflows them with the
-        // text size, none of which the stack was doing.
         Form {
             if let capabilities {
                 Section {
@@ -421,8 +360,6 @@ private struct VoiceSettingsPopover: View {
                     Text("Voice Settings")
                 }
 
-                // Its own section rather than the `Divider()` that used to be drawn in
-                // by hand — the form draws the boundary.
                 Section {
                     Button("Reset Voice Settings") {
                         viewModel.voiceSettings = VoiceSettings()
@@ -454,8 +391,6 @@ private struct VoiceSettingSlider: View {
     let range: ClosedRange<Double>
 
     var body: some View {
-        // `LabeledContent` so the title sits in the form's label column with every
-        // other row, instead of being pushed over by a `Spacer` of its own.
         LabeledContent {
             HStack(spacing: 8) {
                 Slider(value: $value, in: range)
