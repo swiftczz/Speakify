@@ -72,7 +72,6 @@ package struct ContentView: View {
             Task { await viewModel.togglePlayPause(modelContext: modelContext) }
             return .handled
         }
-        .focusedSceneValue(\.speechActions, speechActions)
         .task {
             viewModel.focusEditor()
 
@@ -95,18 +94,6 @@ package struct ContentView: View {
                 AppDataLocation.quarantinedHistoryStoreURL?.path(percentEncoded: false) ?? ""
             ))
         }
-    }
-
-    private var speechActions: SpeechCommandActions {
-        SpeechCommandActions(
-            canGenerate: viewModel.canGenerate,
-            isGenerating: viewModel.isGenerating,
-            isPlaying: viewModel.playback.isPlaying,
-            isPaused: viewModel.playback.isPaused,
-            togglePlayPause: { Task { await viewModel.togglePlayPause(modelContext: modelContext) } },
-            export: { Task { await viewModel.download(modelContext: modelContext) } },
-            focusEditor: { viewModel.focusEditor() }
-        )
     }
 
     @ToolbarContentBuilder

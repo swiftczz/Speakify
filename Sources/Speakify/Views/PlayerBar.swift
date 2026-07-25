@@ -1,4 +1,3 @@
-import AppKit
 import SwiftData
 import SwiftUI
 
@@ -106,15 +105,6 @@ struct PlayerBar: View {
         .disabled(viewModel.canGenerate == false)
         .help(downloadHelp)
         .accessibilityLabel(Text("Export audio"))
-        .contextMenu {
-            if let feedback = viewModel.downloadFeedback {
-                Button("Show in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting(
-                        [feedback.audioURL, feedback.subtitleURL].compactMap { $0 }
-                    )
-                }
-            }
-        }
     }
 
     private var downloadHelp: String {

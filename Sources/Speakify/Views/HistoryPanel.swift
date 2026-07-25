@@ -33,6 +33,7 @@ struct HistoryPanel: View {
         }
         .listStyle(.sidebar)
         .scrollEdgeEffectStyle(.soft, for: .top)
+        .searchable(text: $searchText, prompt: "Search history")
         .overlay {
             if groupedHistory.isEmpty {
                 emptyState
@@ -41,11 +42,6 @@ struct HistoryPanel: View {
         .onDeleteCommand {
             guard selectedHistoryIDs.isEmpty == false else { return }
             showsDeleteConfirmation = true
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            HistorySearchField(text: $searchText)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
         }
         .onAppear(perform: rebuildGroupedHistory)
         .onChange(of: historyRecords) { _, _ in rebuildGroupedHistory() }
@@ -186,48 +182,5 @@ private struct HistoryRow: View {
             .accessibilityLabel(Text("Restore to editor"))
         }
         .padding(.vertical, 4)
-    }
-}
-
-private struct HistorySearchField: View {
-    @Binding var text: String
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-
-            TextField("Search history", text: $text)
-                .textFieldStyle(.plain)
-                .focused($isFocused)
-                .accessibilityLabel(Text("Search history"))
-                .onKeyPress(.escape) {
-                    guard text.isEmpty == false else { return .ignored }
-                    text = ""
-                    return .handled
-                }
-
-            if text.isEmpty == false {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.callout)
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(.secondary)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Text("Clear search"))
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.quaternary, in: Capsule())
-        .contentShape(Capsule())
-        .onTapGesture { isFocused = true }
     }
 }

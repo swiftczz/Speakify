@@ -1,4 +1,3 @@
-import AppKit
 import SwiftData
 import SwiftUI
 import Speakify
@@ -15,23 +14,16 @@ struct SpeakifyApp: App {
                 .frame(minHeight: 640)
                 .modelContainer(historyModelContainer)
                 .environment(\.locale, settings.appLocale)
-                .onAppear { NSApp.appearance = settings.appAppearance.nsAppearance }
-                .onChange(of: settings.appAppearance) { _, newValue in
-                    NSApp.appearance = newValue.nsAppearance
-                }
+                .preferredColorScheme(settings.appAppearance.colorScheme)
         }
         .defaultSize(width: 1440, height: 860)
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified)
-        .commands { SpeechCommands() }
 
         Settings {
             SettingsView(settings: settings)
                 .environment(\.locale, settings.appLocale)
-                .onAppear { NSApp.appearance = settings.appAppearance.nsAppearance }
-                .onChange(of: settings.appAppearance) { _, newValue in
-                    NSApp.appearance = newValue.nsAppearance
-                }
+                .preferredColorScheme(settings.appAppearance.colorScheme)
         }
         .defaultSize(width: 620, height: 620)
         .windowResizability(.contentSize)
@@ -39,11 +31,11 @@ struct SpeakifyApp: App {
 }
 
 private extension AppAppearance {
-    var nsAppearance: NSAppearance? {
+    var colorScheme: ColorScheme? {
         switch self {
         case .system: nil
-        case .light: NSAppearance(named: .aqua)
-        case .dark: NSAppearance(named: .darkAqua)
+        case .light: .light
+        case .dark: .dark
         }
     }
 }
