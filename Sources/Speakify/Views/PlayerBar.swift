@@ -125,7 +125,11 @@ struct PlayerBar: View {
         .buttonStyle(.glass)
         .buttonBorderShape(.circle)
         .controlSize(.large)
-        .disabled(viewModel.canGenerate == false)
+
+        .disabled(
+            viewModel.canGenerate == false
+                && viewModel.hasCachedSpeechForCurrentRequest == false
+        )
         .help(downloadHelp)
         .accessibilityLabel(Text("Export audio"))
     }

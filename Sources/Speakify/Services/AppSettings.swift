@@ -106,13 +106,17 @@ package final class AppSettings {
     }
 
     var draftText: String {
-        didSet { defaults.set(draftText, forKey: Keys.draftText) }
+        didSet { writeDraftText(draftText) }
     }
 
     private let defaults: UserDefaults
+    private let draftTextURL: URL?
 
-    package init(defaults: UserDefaults = .standard) {
+    package init(defaults: UserDefaults = .standard, draftTextURL: URL? = nil) {
         self.defaults = defaults
+        // Tests pass their own location; nil means the shared one. Resolving it eagerly here
+        // keeps the didSet off the filesystem-discovery path on every keystroke.
+        self.draftTextURL = draftTextURL ?? (defaults == .standard ? AppDataLocation.draftTextURL() : nil)
         Self.migrateLegacyProviderValues(in: defaults)
         Self.migrateMiMoDefaultOutputFormat(in: defaults)
 
@@ -145,8 +149,40 @@ package final class AppSettings {
             ?? NSHomeDirectory()
         languageCode = defaults.string(forKey: Keys.languageCode) ?? SpeechLanguage.autoDetect
         playbackRate = Self.normalizedPlaybackRate(defaults.object(forKey: Keys.playbackRate) as? Double ?? 1.0)
-        draftText = defaults.string(forKey: Keys.draftText) ?? Self.defaultDraftText
+        draftText = Self.loadDraftText(
+            url: self.draftTextURL,
+            defaults: defaults
+        )
         L10n.configure(language: resolvedAppLanguage)
+    }
+
+    /// Reads the draft file, falling back to the preferences key it used to live under so an
+    /// existing draft survives the move, then clears that key so the plist does not keep a
+    /// stale copy.
+    private static func loadDraftText(url: URL?, defaults: UserDefaults) -> String {
+        let migrated = defaults.string(forKey: Keys.draftText)
+        if migrated != nil {
+            defaults.removeObject(forKey: Keys.draftText)
+        }
+
+        if let url, let stored = try? String(contentsOf: url, encoding: .utf8) {
+            return stored
+        }
+        if let migrated {
+            if let url {
+                try? migrated.write(to: url, atomically: true, encoding: .utf8)
+            }
+            return migrated
+        }
+        return defaultDraftText
+    }
+
+    private func writeDraftText(_ text: String) {
+        guard let draftTextURL else {
+            defaults.set(text, forKey: Keys.draftText)
+            return
+        }
+        try? text.write(to: draftTextURL, atomically: true, encoding: .utf8)
     }
 
     var downloadDirectoryURL: URL {

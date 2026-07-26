@@ -6,6 +6,7 @@
     {
       "layers" : [
         {
+          "hidden" : false,
           "image-name" : "waveform-back.svg",
           "name" : "Outer bars"
         }
@@ -22,6 +23,7 @@
     {
       "layers" : [
         {
+          "hidden" : false,
           "image-name" : "waveform-front.svg",
           "name" : "Inner bars"
         }

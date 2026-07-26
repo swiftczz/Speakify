@@ -243,6 +243,44 @@ final class SpeechViewModel {
         statusTone = tone
     }
 
+    /// Shared tail for the two operations that can synthesise — play and download. Both
+    /// swallow cancellation, both retire a voice the provider has stopped serving, and both
+    /// report anything else to the status line.
+    func reportGenerationFailure(_ error: any Error) {
+        guard Self.isCancellation(error) == false else { return }
+        removeSelectedVoiceIfUnavailable(error)
+        updateStatus(error.localizedDescription, tone: .error)
+    }
+
+    /// Writing history is secondary to the operation that triggered it, so a failure must not
+    /// masquerade as the operation failing — but it cannot stay silent either, or the row just
+    /// never appears and the user has no way to know why. Callers invoke this last, after the
+    /// success status, so the warning is what remains on screen.
+    func recordHistory(
+        speech: GeneratedSpeech,
+        duration: TimeInterval?,
+        modelContext: ModelContext
+    ) {
+        do {
+            try historyStore.record(
+                speech: speech,
+                providerID: settings.providerID,
+                apiKey: settings.apiKey,
+                duration: duration,
+                modelContext: modelContext
+            )
+        } catch {
+            updateStatus(
+                L10n.format(
+                    "status.history-save-failed",
+                    defaultValue: "Could not save this to history: %@",
+                    error.localizedDescription
+                ),
+                tone: .error
+            )
+        }
+    }
+
     nonisolated static func estimatedCreditCost(characterCount: Int, modelID: String) -> Int {
         TTSProviderRegistry.provider(withID: "elevenlabs")
             .capabilities

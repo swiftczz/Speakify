@@ -3,7 +3,11 @@ import SwiftData
 
 extension SpeechViewModel {
     func download(modelContext: ModelContext) async {
-        guard canGenerate else {
+        // Cached audio is exportable even when a fresh synthesis would be refused — writing a
+        // file the app already holds costs no credits and issues no request. Play has always
+        // allowed this; download rejected it, so an exhausted quota greyed out the export of
+        // audio sitting right there in the cache. Mirrors the guard in play().
+        guard canGenerate || hasCachedSpeechForCurrentRequest else {
             updateStatus(validationMessage(), tone: .error)
             return
         }
@@ -40,13 +44,6 @@ extension SpeechViewModel {
                 audioURL: result.audioURL,
                 subtitleURL: result.subtitleURL
             )
-            try? historyStore.record(
-                speech: speech,
-                providerID: settings.providerID,
-                apiKey: settings.apiKey,
-                duration: playback.duration > 0 ? playback.duration : nil,
-                modelContext: modelContext
-            )
             if let subtitleDestination = result.subtitleURL {
                 updateStatus(
                     L10n.format(
@@ -67,10 +64,13 @@ extension SpeechViewModel {
                     tone: .success
                 )
             }
+            recordHistory(
+                speech: speech,
+                duration: playback.duration > 0 ? playback.duration : nil,
+                modelContext: modelContext
+            )
         } catch {
-            guard Self.isCancellation(error) == false else { return }
-            removeSelectedVoiceIfUnavailable(error)
-            updateStatus(error.localizedDescription, tone: .error)
+            reportGenerationFailure(error)
         }
     }
 }

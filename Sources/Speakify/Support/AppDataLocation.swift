@@ -6,6 +6,7 @@ package enum AppDataLocation {
     private static let rootDirectoryName = ".speakify"
     private static let legacyDirectoryName = "com.local.Speakify"
     private static let historyStoreFileName = "History.store"
+    private static let draftTextFileName = "Draft.txt"
     private static let logger = Logger(subsystem: "Speakify", category: "LocalData")
 
     package static func prepare(fileManager: FileManager = .default) {
@@ -23,6 +24,14 @@ package enum AppDataLocation {
     package static func historyStoreURL(fileManager: FileManager = .default) -> URL {
         prepare(fileManager: fileManager)
         return rootDirectoryURL(fileManager: fileManager).appending(path: historyStoreFileName)
+    }
+
+    /// The editor draft is document content, not a preference. It lives beside the other local
+    /// data so the preferences plist stays a list of settings — a draft can run to tens of
+    /// kilobytes and was being rewritten there on every debounced keystroke.
+    package static func draftTextURL(fileManager: FileManager = .default) -> URL {
+        prepare(fileManager: fileManager)
+        return rootDirectoryURL(fileManager: fileManager).appending(path: draftTextFileName)
     }
 
     package static func audioCacheDirectoryURL(fileManager: FileManager = .default) -> URL {

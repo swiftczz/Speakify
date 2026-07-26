@@ -25,18 +25,10 @@ extension SpeechViewModel {
                 ),
                 tone: .success
             )
-            try? historyStore.record(
-                speech: speech,
-                providerID: settings.providerID,
-                apiKey: settings.apiKey,
-                duration: duration,
-                modelContext: modelContext
-            )
+            recordHistory(speech: speech, duration: duration, modelContext: modelContext)
         } catch {
             playback.stop()
-            guard Self.isCancellation(error) == false else { return }
-            removeSelectedVoiceIfUnavailable(error)
-            updateStatus(error.localizedDescription, tone: .error)
+            reportGenerationFailure(error)
         }
     }
 
@@ -85,9 +77,12 @@ extension SpeechViewModel {
         playback.resume()
         nowPlaying.updateElapsed(playback.currentTime)
         if let voice = selectedVoice {
+            // Same tone as play(). The two paths produce the identical sentence, and a
+            // mismatch here showed the user a checkmark on one route and an info glyph on
+            // the other for the same state.
             updateStatus(
                 L10n.format("status.playing", defaultValue: "Playing %@.", voice.displayName),
-                tone: .info
+                tone: .success
             )
         }
     }

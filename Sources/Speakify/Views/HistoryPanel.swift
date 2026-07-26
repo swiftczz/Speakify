@@ -9,6 +9,7 @@ struct HistoryPanel: View {
     @State private var searchText = ""
     @State private var selectedHistoryIDs = Set<PersistentIdentifier>()
     @State private var showsDeleteConfirmation = false
+    @State private var deleteErrorMessage: String?
     @State private var groupedHistory: [HistorySectionData] = []
 
     var body: some View {
@@ -65,6 +66,17 @@ struct HistoryPanel: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This removes selected local history records from this Mac.")
+        }
+        .alert(
+            "Could not delete history",
+            isPresented: Binding(
+                get: { deleteErrorMessage != nil },
+                set: { if $0 == false { deleteErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { deleteErrorMessage = nil }
+        } message: {
+            Text(verbatim: deleteErrorMessage ?? "")
         }
     }
 
@@ -136,7 +148,12 @@ struct HistoryPanel: View {
         let recordsToDelete = historyRecords.filter { ids.contains($0.persistentModelID) }
         recordsToDelete.forEach { modelContext.delete($0) }
         selectedHistoryIDs.subtract(ids)
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            deleteErrorMessage = error.localizedDescription
+        }
     }
 }
 
