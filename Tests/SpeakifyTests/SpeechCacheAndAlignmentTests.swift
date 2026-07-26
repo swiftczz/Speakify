@@ -82,8 +82,10 @@ final class SpeechCacheStoreTests: XCTestCase {
         )
 
         await store.store(speech, key: "key-1")
+        let containsCachedSpeech = await store.containsSpeech(for: request, key: "key-1")
         let cached = await store.speech(for: request, key: "key-1")
 
+        XCTAssertTrue(containsCachedSpeech)
         XCTAssertEqual(cached?.audioData, speech.audioData)
         XCTAssertEqual(cached?.alignment?.characters, ["a"])
     }
@@ -103,8 +105,10 @@ final class SpeechCacheStoreTests: XCTestCase {
             ofItemAtPath: audioURL.path(percentEncoded: false)
         )
 
+        let containsCachedSpeech = await store.containsSpeech(for: request, key: "key-1")
         let cached = await store.speech(for: request, key: "key-1")
 
+        XCTAssertFalse(containsCachedSpeech)
         XCTAssertNil(cached)
         XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path(percentEncoded: false)))
     }

@@ -6,8 +6,24 @@
     {
       "layers" : [
         {
-          "image-name" : "waveform.svg",
-          "name" : "waveform"
+          "image-name" : "waveform-back.svg",
+          "name" : "Outer bars"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.35
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.75
+      }
+    },
+    {
+      "layers" : [
+        {
+          "image-name" : "waveform-front.svg",
+          "name" : "Inner bars"
         }
       ],
       "shadow" : {
@@ -16,7 +32,7 @@
       },
       "translucency" : {
         "enabled" : true,
-        "value" : 0.5
+        "value" : 0.35
       }
     }
   ],

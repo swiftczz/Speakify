@@ -34,27 +34,46 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .scrollEdgeEffectStyle(.soft, for: .bottom)
-        .safeAreaInset(edge: .bottom) {
+        .safeAreaBar(edge: .bottom) {
             VStack(alignment: .leading, spacing: 12) {
                 if reportsQuota {
                     QuotaWidget(quota: displayedQuota)
                 }
 
-                SettingsLink {
-                    Label {
-                        Text("Settings")
-                    } icon: {
-                        Image(systemName: "gearshape")
-                    }
-                    .contentShape(.rect)
-                }
-                .buttonStyle(.borderless)
+                SettingsFooterRow()
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 12)
             .padding(.top, 10)
             .padding(.bottom, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+// Sits below the list, so it has to earn its row appearance by hand. .borderless rendered
+// it as flat secondary text with no hover — next to real sidebar rows that highlight and
+// take the primary colour, it read as a disabled item rather than the way into Settings.
+private struct SettingsFooterRow: View {
+    @State private var isHovering = false
+
+    var body: some View {
+        SettingsLink {
+            Label {
+                Text("Settings")
+            } icon: {
+                Image(systemName: "gearshape")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .background(
+            isHovering ? AnyShapeStyle(.quaternary) : AnyShapeStyle(.clear),
+            in: .rect(cornerRadius: 6)
+        )
+        .onHover { isHovering = $0 }
     }
 }
 
@@ -114,15 +133,38 @@ private struct QuotaWidget: View {
                 .lineLimit(1)
                 .foregroundStyle(.secondary)
 
-            Gauge(value: progressValue) {
-                EmptyView()
-            }
-            .gaugeStyle(.accessoryLinearCapacity)
+            QuotaBar(value: progressValue)
         }
         .font(.caption)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text("Credits (Used/Total)"))
         .accessibilityValue(Text(verbatim: ratioText))
+    }
+}
+
+// Drawn by hand because neither stock control is the right weight here. The original
+// Gauge(.accessoryLinearCapacity) is a watchOS complication style — thick and fully
+// saturated, which left a glancing figure as the loudest thing in the sidebar. Swapping it
+// for a linear ProgressView only changed the colour: on macOS that style renders at the very
+// same height, and a solid grey bar of that thickness reads heavier still. Two capsules give
+// an exact height and a fill subtle enough for a number nobody stares at. Running low is
+// already reported in words by the status row, so this does not need to raise an alarm.
+private struct QuotaBar: View {
+    let value: Double
+    @ScaledMetric private var height: CGFloat = 3
+
+    var body: some View {
+        Capsule()
+            .fill(.quaternary)
+            .frame(height: height)
+            .overlay(alignment: .leading) {
+                GeometryReader { proxy in
+                    Capsule()
+                        .fill(.tertiary)
+                        .frame(width: proxy.size.width * min(max(value, 0), 1))
+                }
+            }
+            .accessibilityHidden(true)
     }
 }

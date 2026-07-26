@@ -6,17 +6,42 @@ struct PlayerBar: View {
     let settings: AppSettings
     let viewModel: SpeechViewModel
     let playback: PlaybackStore
-    @State private var playFeedback = 0
+    @State private var primaryActionFeedback = 0
     @State private var downloadFeedback = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric private var timeWidth: CGFloat = 92
     @ScaledMetric private var audioStatusHeight: CGFloat = 38
 
-    private var playButtonSymbol: String {
+    private var primaryActionSymbol: String {
         if viewModel.isGenerating {
             return "stop.fill"
         }
-        return playback.isPlaying ? "pause.fill" : "play.fill"
+        if playback.isPlaying {
+            return "pause.fill"
+        }
+        if playback.isPaused {
+            return "play.fill"
+        }
+        if viewModel.hasCachedSpeechForCurrentRequest {
+            return "play.fill"
+        }
+        return "waveform.badge.plus"
+    }
+
+    private var primaryActionLabel: String {
+        if viewModel.isGenerating {
+            return L10n.string("Cancel generation", defaultValue: "Cancel generation")
+        }
+        if playback.isPlaying {
+            return L10n.string("Pause", defaultValue: "Pause")
+        }
+        if playback.isPaused {
+            return L10n.string("Play", defaultValue: "Play")
+        }
+        if viewModel.hasCachedSpeechForCurrentRequest {
+            return L10n.string("Play", defaultValue: "Play")
+        }
+        return L10n.string("Generate and play", defaultValue: "Generate and play")
     }
 
     private var downloadContentsDescription: String {
@@ -48,7 +73,7 @@ struct PlayerBar: View {
 
             PlaybackRateControl(settings: settings)
 
-            playButton
+            primaryActionButton
 
             downloadButton
         }
@@ -66,29 +91,27 @@ struct PlayerBar: View {
         }
     }
 
-    private var playButton: some View {
+    private var primaryActionButton: some View {
         Button {
-            playFeedback += 1
+            primaryActionFeedback += 1
             Task { await viewModel.togglePlayPause(modelContext: modelContext) }
         } label: {
-            Image(systemName: playButtonSymbol)
+            Image(systemName: primaryActionSymbol)
                 .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: reduceMotion ? 0 : playFeedback)
+                .symbolEffect(.bounce, value: reduceMotion ? 0 : primaryActionFeedback)
         }
         .buttonStyle(.glassProminent)
         .buttonBorderShape(.circle)
         .controlSize(.large)
         .disabled(
-                viewModel.canGenerate == false
+            viewModel.canGenerate == false
                 && playback.isPlaying == false
+                && playback.isPaused == false
+                && viewModel.hasCachedSpeechForCurrentRequest == false
                 && viewModel.isGenerating == false
         )
-        .help(viewModel.isGenerating ? Text("Cancel generation") : Text("Play"))
-        .accessibilityLabel(
-            viewModel.isGenerating
-                ? Text("Cancel generation")
-                : (playback.isPlaying ? Text("Pause") : Text("Play"))
-        )
+        .help(Text(verbatim: primaryActionLabel))
+        .accessibilityLabel(Text(verbatim: primaryActionLabel))
     }
 
     private var downloadButton: some View {

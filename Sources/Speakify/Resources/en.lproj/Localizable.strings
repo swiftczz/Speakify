@@ -64,6 +64,7 @@
 "Speaker Boost" = "Speaker Boost";
 "Reset Voice Settings" = "Reset Voice Settings";
 "Cancel generation" = "Cancel generation";
+"Generate and play" = "Generate and play";
 "Play" = "Play";
 "Playback speed" = "Playback speed";
 "Speech status: %@" = "Speech status: %@";
@@ -83,9 +84,9 @@
 "error.text-too-long" = "The text is %1$lld characters, which is over the %2$lld-character limit. Please shorten it.";
 "error.insufficient-credits" = "Not enough credits: this text is estimated to need %1$lld, but only %2$lld remain. Shorten the text or add credits.";
 "error.invalid-response" = "The speech service returned an invalid response.";
-"error.request-changed" = "The speech request changed. Press play again to generate the latest text.";
+"error.request-changed" = "The speech request changed. Generate again to use the latest text.";
 "error.http-status" = "Speech service error %1$lld: %2$@";
-"status.configure" = "Configure your API key, load voices, then press play.";
+"status.configure" = "Configure your API key, load voices, then generate and play.";
 "status.loading-catalog" = "Loading %@ models and voices…";
 "status.no-compatible-voices" = "No compatible voices returned by the account.";
 "status.account-voices-unavailable" = "Loaded %1$lld public voices. Account voices unavailable: %2$@";

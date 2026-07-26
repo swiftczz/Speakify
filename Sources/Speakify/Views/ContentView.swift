@@ -57,7 +57,11 @@ package struct ContentView: View {
             )
                 .navigationSplitViewColumnWidth(min: 220, ideal: 258, max: 360)
         } detail: {
-            MainWorkspace(settings: settings, viewModel: viewModel)
+            MainWorkspace(
+                settings: settings,
+                viewModel: viewModel,
+                isHistoryVisible: $isHistoryVisible
+            )
                 .frame(minWidth: 460)
                 .inspector(isPresented: $isHistoryVisible) {
                     HistoryPanel(onApply: { draft in
@@ -67,7 +71,6 @@ package struct ContentView: View {
                 }
         }
         .toolbar { toolbarContent }
-        .toolbarBackground(.hidden, for: .windowToolbar)
         .onKeyPress(.space) {
             Task { await viewModel.togglePlayPause(modelContext: modelContext) }
             return .handled
@@ -112,22 +115,6 @@ package struct ContentView: View {
             }
         }
 
-        ToolbarSpacer(.flexible, placement: .automatic)
-
-        ToolbarItem(placement: .automatic) {
-            Button {
-                withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
-                    isHistoryVisible.toggle()
-                }
-            } label: {
-                Label {
-                    Text("History")
-                } icon: {
-                    Image(systemName: "clock.arrow.circlepath")
-                }
-            }
-            .help(isHistoryVisible ? Text("Hide History") : Text("Show History"))
-        }
     }
 
     private func persistQuotaSnapshot(_ quota: TTSQuota?) {

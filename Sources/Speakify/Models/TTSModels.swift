@@ -216,7 +216,7 @@ enum TTSProviderError: LocalizedError, Sendable {
         case .requestChanged:
             return L10n.string(
                 "error.request-changed",
-                defaultValue: "The speech request changed. Press play again to generate the latest text."
+                defaultValue: "The speech request changed. Generate again to use the latest text."
             )
         case let .httpStatus(status, message, _):
             let format = L10n.string(

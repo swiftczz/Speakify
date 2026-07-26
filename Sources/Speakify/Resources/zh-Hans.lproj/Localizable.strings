@@ -64,6 +64,7 @@
 "Speaker Boost" = "说话人增强";
 "Reset Voice Settings" = "恢复默认参数";
 "Cancel generation" = "取消生成";
+"Generate and play" = "生成并播放";
 "Play" = "播放";
 "Playback speed" = "播放速度";
 "Speech status: %@" = "语音状态：%@";
@@ -83,9 +84,9 @@
 "error.text-too-long" = "当前文本有 %1$lld 个字符，超过 %2$lld 个字符的限制，请缩短文本。";
 "error.insufficient-credits" = "额度不足：预计需要 %1$lld，当前仅剩 %2$lld。请缩短文本或补充额度。";
 "error.invalid-response" = "语音服务返回了无效响应。";
-"error.request-changed" = "语音请求已发生变化，请重新点击播放生成最新文本。";
+"error.request-changed" = "语音请求已发生变化，请重新生成最新文本。";
 "error.http-status" = "语音服务错误 %1$lld：%2$@";
-"status.configure" = "请配置 API Key、加载音色，然后点击播放。";
+"status.configure" = "请配置 API Key、加载音色，然后生成并播放。";
 "status.loading-catalog" = "正在加载 %@ 的模型和音色…";
 "status.no-compatible-voices" = "账号没有返回兼容的音色。";
 "status.account-voices-unavailable" = "已加载 %1$lld 个公共音色，账号音色暂不可用：%2$@";

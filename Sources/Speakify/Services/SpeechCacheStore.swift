@@ -29,8 +29,7 @@ actor SpeechCacheStore {
     }
 
     func speech(for request: SpeechRequest, key: String) -> GeneratedSpeech? {
-        let fileExtension = Self.fileExtension(for: request.outputFormat)
-        let audioURL = directoryURL.appending(path: "\(key).\(fileExtension)")
+        let audioURL = audioURL(for: request, key: key)
         guard fileManager.fileExists(atPath: audioURL.path(percentEncoded: false)) else { return nil }
 
         if isExpired(audioURL) {
@@ -45,10 +44,28 @@ actor SpeechCacheStore {
 
         return GeneratedSpeech(
             audioData: audioData,
-            fileExtension: fileExtension,
+            fileExtension: Self.fileExtension(for: request.outputFormat),
             request: request,
             alignment: alignment(for: key)
         )
+    }
+
+    func containsSpeech(for request: SpeechRequest, key: String) -> Bool {
+        let audioURL = audioURL(for: request, key: key)
+        guard fileManager.fileExists(atPath: audioURL.path(percentEncoded: false)) else {
+            return false
+        }
+
+        if isExpired(audioURL) {
+            try? fileManager.removeItem(at: audioURL)
+            try? fileManager.removeItem(at: alignmentURL(for: key))
+            return false
+        }
+
+        guard let values = try? audioURL.resourceValues(forKeys: [.fileSizeKey]) else {
+            return false
+        }
+        return (values.fileSize ?? 0) > 0
     }
 
     func store(_ speech: GeneratedSpeech, key: String) {
@@ -85,6 +102,11 @@ actor SpeechCacheStore {
 
     private func alignmentURL(for key: String) -> URL {
         directoryURL.appending(path: "\(key).alignment.json")
+    }
+
+    private func audioURL(for request: SpeechRequest, key: String) -> URL {
+        let fileExtension = Self.fileExtension(for: request.outputFormat)
+        return directoryURL.appending(path: "\(key).\(fileExtension)")
     }
 
     private func alignment(for key: String) -> SpeechAlignment? {

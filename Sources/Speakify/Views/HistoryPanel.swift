@@ -12,31 +12,39 @@ struct HistoryPanel: View {
     @State private var groupedHistory: [HistorySectionData] = []
 
     var body: some View {
-        List(selection: $selectedHistoryIDs) {
-            ForEach(groupedHistory) { section in
-                Section {
-                    ForEach(section.items) { item in
-                        HistoryRow(item: item, onApply: { onApply(item.draft) })
-                            .tag(item.persistentModelID)
-                            .contextMenu {
-                                Button("Restore to editor") { onApply(item.draft) }
-                                Divider()
-                                Button("Delete", role: .destructive) {
-                                    delete(ids: selectionIncluding(item))
+        VStack(spacing: 0) {
+            HistorySearchField(text: $searchText)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+                .padding(.bottom, 6)
+
+            List(selection: $selectedHistoryIDs) {
+                ForEach(groupedHistory) { section in
+                    Section {
+                        ForEach(section.items) { item in
+                            HistoryRow(item: item, onApply: { onApply(item.draft) })
+                                .tag(item.persistentModelID)
+                                .contextMenu {
+                                    Button("Restore to editor") { onApply(item.draft) }
+                                    Divider()
+                                    Button("Delete", role: .destructive) {
+                                        delete(ids: selectionIncluding(item))
+                                    }
                                 }
-                            }
+                        }
+                    } header: {
+                        Text(verbatim: section.title)
                     }
-                } header: {
-                    Text(verbatim: section.title)
                 }
             }
-        }
-        .listStyle(.sidebar)
-        .scrollEdgeEffectStyle(.soft, for: .top)
-        .searchable(text: $searchText, prompt: "Search history")
-        .overlay {
-            if groupedHistory.isEmpty {
-                emptyState
+            .listStyle(.sidebar)
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            // Over the list only. "No history matches this search" is exactly when reaching the
+            // field matters most, and an overlay spanning the panel would swallow clicks on it.
+            .overlay {
+                if groupedHistory.isEmpty {
+                    emptyState
+                }
             }
         }
         .onDeleteCommand {
@@ -182,5 +190,56 @@ private struct HistoryRow: View {
             .accessibilityLabel(Text("Restore to editor"))
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct HistorySearchField: View {
+    @Binding var text: String
+    @FocusState private var isFocused: Bool
+    @ScaledMetric private var height: CGFloat = 28
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+
+            TextField("Search history", text: $text)
+                .textFieldStyle(.plain)
+                .focused($isFocused)
+                .onKeyPress(.escape) {
+                    guard text.isEmpty == false else { return .ignored }
+                    text = ""
+                    return .handled
+                }
+
+            if text.isEmpty == false {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                        .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Clear search"))
+            }
+        }
+        .font(.body)
+        .padding(.horizontal, 9)
+        .frame(height: height)
+        .background(.background.secondary, in: .capsule)
+        .overlay {
+            Capsule().strokeBorder(
+                isFocused ? AnyShapeStyle(.tint) : AnyShapeStyle(.separator),
+                lineWidth: isFocused ? 2.5 : 0.5
+            )
+        }
+        .contentShape(.capsule)
+        .onTapGesture { isFocused = true }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Search history"))
+        .accessibilityAddTraits(.isSearchField)
     }
 }
