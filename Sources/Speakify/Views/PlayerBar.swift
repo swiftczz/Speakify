@@ -25,7 +25,7 @@ struct PlayerBar: View {
         if viewModel.hasCachedSpeechForCurrentRequest {
             return "play.fill"
         }
-        return "waveform.badge.plus"
+        return "play.fill"
     }
 
     private var primaryActionLabel: String {
