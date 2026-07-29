@@ -61,7 +61,9 @@ private struct SettingsFooterRow: View {
             Label {
                 Text("Settings")
             } icon: {
-                Image(systemName: "gearshape")
+                Image(systemName: "gear")
+                    .font(.system(size: 14, weight: .medium))
+                    .frame(width: 18)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 8)
